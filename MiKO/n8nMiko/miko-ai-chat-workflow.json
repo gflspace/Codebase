@@ -1,0 +1,549 @@
+{
+  "name": "MiKO AI Chat & Scheduling Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat",
+        "responseMode": "lastNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "webhook-chat-001",
+      "name": "Chat Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "miko-chat-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.action }}",
+              "operation": "equals",
+              "value2": "sendMessage"
+            }
+          ]
+        }
+      },
+      "id": "switch-action-001",
+      "name": "Route by Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [500, 300],
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "outputKey": "chat",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "sendMessage",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "schedule",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "schedule_calendar_event",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "inquiry",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "contact_inquiry",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "none"
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the AI Patient Coordinator for MiKO Plastic Surgery in Beverly Hills. You are warm, professional, and knowledgeable. You represent a luxury medical practice led by Dr. Michael K. Obeng.\n\nCORE PRINCIPLES:\n1. NEVER block booking due to missing non-critical information\n2. Collect patient data progressively\n3. Detect booking intent early and offer scheduling\n4. Be concise but thorough\n5. Always provide clear next steps\n\nPROCEDURES:\n- Face: Facelift, Rhinoplasty, Blepharoplasty, Neck lift\n- Breast: Augmentation, Lift, Reduction, Revision\n- Body: Liposuction, Tummy Tuck, BBL, Mommy Makeover\n\nCONTACT:\n- Phone: (310) 275-2705\n- Location: Beverly Hills, CA"
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.chatInput }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 500
+        }
+      },
+      "id": "openai-chat-001",
+      "name": "AI Chat Response",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [800, 150],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-cred",
+          "name": "OpenAI - MiKO"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst aiResponse = input.choices[0].message.content;\n\n// Detect intent from user message\nconst userMessage = $('Chat Webhook').first().json.chatInput.toLowerCase();\nlet intent = 'general_question';\n\nif (userMessage.match(/\\b(book|schedule|appointment|consultation)\\b/)) {\n  intent = 'book_consultation';\n} else if (userMessage.match(/\\b(price|cost|financing|payment)\\b/)) {\n  intent = 'pricing_insurance';\n} else if (userMessage.match(/\\b(procedure|surgery|facelift|rhinoplasty|breast|tummy|lipo|bbl)\\b/)) {\n  intent = 'procedure_information';\n} else if (userMessage.match(/\\b(human|person|coordinator|speak)\\b/)) {\n  intent = 'human_handoff';\n}\n\nreturn {\n  output: aiResponse,\n  intent: intent,\n  handoff_required: intent === 'human_handoff',\n  suggested_actions: intent === 'book_consultation' ? ['View Available Times', 'Virtual Consultation', 'In-Person Visit'] : [],\n  show_calendar: intent === 'book_consultation'\n};"
+      },
+      "id": "format-response-001",
+      "name": "Format Chat Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 150]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.scheduling_action }}",
+              "operation": "equals",
+              "value2": "check_availability"
+            }
+          ]
+        }
+      },
+      "id": "switch-schedule-001",
+      "name": "Schedule Action Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [800, 300],
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "outputKey": "check",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.scheduling_action }}",
+                    "rightValue": "check_availability",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "book",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.scheduling_action }}",
+                    "rightValue": "book",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "reschedule",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.scheduling_action }}",
+                    "rightValue": "reschedule",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "cancel",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.scheduling_action }}",
+                    "rightValue": "cancel",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "none"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list"
+        },
+        "timeMin": "={{ $json.availability_time || $now.toISO() }}",
+        "timeMax": "={{ $now.plus({ days: 7 }).toISO() }}",
+        "options": {
+          "singleEvents": true,
+          "orderBy": "startTime"
+        }
+      },
+      "id": "calendar-check-001",
+      "name": "Check Calendar Availability",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [1050, 250],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "google-calendar-cred",
+          "name": "Google Calendar - MiKO"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const events = $input.all();\nconst busyTimes = events.map(e => ({\n  start: e.json.start.dateTime,\n  end: e.json.end.dateTime\n}));\n\n// Generate available slots (9 AM - 5 PM, Mon-Fri)\nconst slots = [];\nconst now = new Date();\n\nfor (let d = 0; d < 7; d++) {\n  const date = new Date(now);\n  date.setDate(date.getDate() + d);\n  \n  // Skip weekends\n  if (date.getDay() === 0 || date.getDay() === 6) continue;\n  \n  for (let h = 9; h < 17; h++) {\n    const slotStart = new Date(date);\n    slotStart.setHours(h, 0, 0, 0);\n    \n    const slotEnd = new Date(slotStart);\n    slotEnd.setHours(h + 1);\n    \n    // Check if slot is busy\n    const isBusy = busyTimes.some(busy => {\n      const busyStart = new Date(busy.start);\n      const busyEnd = new Date(busy.end);\n      return slotStart < busyEnd && slotEnd > busyStart;\n    });\n    \n    if (!isBusy && slotStart > now) {\n      slots.push({\n        time: slotStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),\n        dateTime: slotStart.toISOString(),\n        available: true\n      });\n    }\n  }\n}\n\nreturn {\n  success: true,\n  available_slots: slots.slice(0, 14),\n  message: `Found ${slots.length} available slots`\n};"
+      },
+      "id": "generate-slots-001",
+      "name": "Generate Available Slots",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 250]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list"
+        },
+        "start": "={{ $json.booking_time }}",
+        "end": "={{ DateTime.fromISO($json.booking_time).plus({ hours: 1 }).toISO() }}",
+        "additionalFields": {
+          "summary": "MiKO Consultation - {{ $json.full_name }}",
+          "description": "Patient: {{ $json.full_name }}\nEmail: {{ $json.email }}\nPhone: {{ $json.phone }}\nProcedure Interest: {{ $json.procedure }}\nConsultation Type: {{ $json.consult_type }}\n\nBooked via MiKO AI Assistant",
+          "attendees": "={{ $json.email }}"
+        }
+      },
+      "id": "calendar-book-001",
+      "name": "Create Booking",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [1050, 350],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "google-calendar-cred",
+          "name": "Google Calendar - MiKO"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Chat Webhook').first().json.email }}",
+        "subject": "Your MiKO Consultation is Confirmed",
+        "emailType": "html",
+        "message": "<html><body style=\"font-family: Arial, sans-serif; color: #2D0A0A;\"><div style=\"max-width: 600px; margin: 0 auto; padding: 20px;\"><h1 style=\"color: #4A1515;\">Consultation Confirmed</h1><p>Dear {{ $('Chat Webhook').first().json.full_name }},</p><p>Thank you for scheduling a consultation with MiKO Plastic Surgery.</p><div style=\"background: #FBF8F5; padding: 20px; border-radius: 10px; margin: 20px 0;\"><p><strong>Date & Time:</strong> {{ $('Chat Webhook').first().json.booking_time }}</p><p><strong>Type:</strong> {{ $('Chat Webhook').first().json.consult_type === 'virtual' ? 'Virtual Video Consultation' : 'In-Person Visit' }}</p><p><strong>Confirmation #:</strong> {{ $json.id }}</p></div><p>If you need to reschedule or cancel, please contact us:</p><ul><li>Phone: (310) 275-2705</li><li>Email: office@mikoplasticsurgery.com</li></ul><p>We look forward to meeting you!</p><p style=\"margin-top: 30px;\">Warm regards,<br>The MiKO Plastic Surgery Team</p><hr style=\"border: none; border-top: 1px solid #E8E3DC; margin: 30px 0;\"><p style=\"font-size: 12px; color: #8B7355;\">MiKO Plastic Surgery | Dr. Michael K. Obeng, MD, FACS<br>436 N Bedford Dr #305, Beverly Hills, CA 90210</p></div></body></html>",
+        "options": {}
+      },
+      "id": "gmail-booking-001",
+      "name": "Send Booking Confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1300, 350],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-cred",
+          "name": "Gmail - MiKO"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const calendarEvent = $('Create Booking').first().json;\nreturn {\n  success: true,\n  confirmed: true,\n  appointment_id: calendarEvent.id,\n  message: 'Your consultation has been successfully booked.',\n  details: {\n    date: $('Chat Webhook').first().json.booking_time,\n    type: $('Chat Webhook').first().json.consult_type\n  }\n};"
+      },
+      "id": "format-booking-001",
+      "name": "Format Booking Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1550, 350]
+    },
+    {
+      "parameters": {
+        "sendTo": "office@mikoplasticsurgery.com",
+        "subject": "New Patient Inquiry - {{ $json.full_name }}",
+        "emailType": "html",
+        "message": "<html><body style=\"font-family: Arial, sans-serif;\"><h2>New Patient Inquiry</h2><div style=\"background: #f5f5f5; padding: 20px; border-radius: 8px;\"><p><strong>Name:</strong> {{ $json.full_name }}</p><p><strong>Email:</strong> {{ $json.email }}</p><p><strong>Phone:</strong> {{ $json.phone || 'Not provided' }}</p><p><strong>Procedure Interest:</strong> {{ $json.procedure || 'General inquiry' }}</p><p><strong>Message:</strong></p><p style=\"background: white; padding: 15px; border-radius: 4px;\">{{ $json.message }}</p></div><p style=\"margin-top: 20px;\"><strong>Source:</strong> {{ $json.channel }}</p><p><strong>Timestamp:</strong> {{ $json.timestamp }}</p></body></html>",
+        "options": {}
+      },
+      "id": "gmail-inquiry-001",
+      "name": "Forward Inquiry to Office",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [800, 450],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-cred",
+          "name": "Gmail - MiKO"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Chat Webhook').first().json.email }}",
+        "subject": "Thank You for Contacting MiKO Plastic Surgery",
+        "emailType": "html",
+        "message": "<html><body style=\"font-family: Arial, sans-serif; color: #2D0A0A;\"><div style=\"max-width: 600px; margin: 0 auto; padding: 20px;\"><h1 style=\"color: #4A1515;\">Thank You for Reaching Out</h1><p>Dear {{ $('Chat Webhook').first().json.full_name }},</p><p>We have received your inquiry and our patient coordination team will respond within 24 hours.</p><p>In the meantime, feel free to:</p><ul><li>Browse our <a href=\"https://mikoplasticsurgery.com/procedures\">procedures</a></li><li>View our <a href=\"https://mikoplasticsurgery.com/gallery\">before & after gallery</a></li><li>Learn about <a href=\"https://mikoplasticsurgery.com/financing\">financing options</a></li></ul><p>For immediate assistance, please call us at <strong>(310) 275-2705</strong>.</p><p style=\"margin-top: 30px;\">Warm regards,<br>The MiKO Plastic Surgery Team</p></div></body></html>",
+        "options": {}
+      },
+      "id": "gmail-inquiry-confirm-001",
+      "name": "Send Inquiry Confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1050, 450],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-cred",
+          "name": "Gmail - MiKO"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  success: true,\n  message: 'Thank you for your inquiry. Our team will respond within 24 hours.',\n  inquiry_id: 'INQ-' + Date.now().toString(36).toUpperCase()\n};"
+      },
+      "id": "format-inquiry-001",
+      "name": "Format Inquiry Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 450]
+    },
+    {
+      "parameters": {},
+      "id": "error-trigger-002",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [250, 600]
+    },
+    {
+      "parameters": {
+        "sendTo": "admin@mikoplasticsurgery.com",
+        "subject": "MiKO AI Workflow Error Alert",
+        "emailType": "html",
+        "message": "<html><body style=\"font-family: Arial, sans-serif;\"><h2 style=\"color: #c00;\">Workflow Error Alert</h2><div style=\"background: #fff3f3; padding: 20px; border-radius: 8px; border-left: 4px solid #c00;\"><p><strong>Error:</strong> {{ $json.error.message }}</p><p><strong>Node:</strong> {{ $json.error.node }}</p><p><strong>Workflow:</strong> {{ $json.workflow.name }}</p><p><strong>Execution ID:</strong> {{ $json.execution.id }}</p><p><strong>Time:</strong> {{ $json.execution.startedAt }}</p></div><p style=\"margin-top: 20px;\">Please investigate this issue immediately.</p></body></html>",
+        "options": {}
+      },
+      "id": "admin-error-notify-001",
+      "name": "Notify Admin on Error",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [500, 600],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-cred",
+          "name": "Gmail - MiKO"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Chat Webhook": {
+      "main": [
+        [
+          {
+            "node": "Route by Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Action": {
+      "main": [
+        [
+          {
+            "node": "AI Chat Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Schedule Action Router",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Forward Inquiry to Office",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Chat Response": {
+      "main": [
+        [
+          {
+            "node": "Format Chat Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Action Router": {
+      "main": [
+        [
+          {
+            "node": "Check Calendar Availability",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Booking",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [],
+        []
+      ]
+    },
+    "Check Calendar Availability": {
+      "main": [
+        [
+          {
+            "node": "Generate Available Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Booking": {
+      "main": [
+        [
+          {
+            "node": "Send Booking Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Booking Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Format Booking Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Forward Inquiry to Office": {
+      "main": [
+        [
+          {
+            "node": "Send Inquiry Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Inquiry Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Format Inquiry Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Notify Admin on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "2",
+  "meta": {
+    "instanceId": "miko-plastic-surgery-n8n"
+  },
+  "tags": [
+    {
+      "name": "MiKO",
+      "id": "miko-tag-001"
+    },
+    {
+      "name": "AI Chat",
+      "id": "ai-chat-tag-001"
+    },
+    {
+      "name": "Scheduling",
+      "id": "scheduling-tag-001"
+    }
+  ]
+}

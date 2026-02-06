@@ -1,0 +1,84 @@
+{
+  "name": "MiKO – AI Triage & Qualification",
+  "nodes": [
+    {
+      "id": "SMS_Inbound",
+      "name": "Inbound SMS",
+      "type": "n8n-nodes-base.twilioTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "id": "LLM_Triage",
+      "name": "AI Triage",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [300, 300],
+      "parameters": {
+        "model": "gpt-4",
+        "prompt": "You are the Clinical Concierge AI for Dr. Michael K. Obeng. Analyze the patient message below. 1) Identify procedure type. 2) Detect risk keywords (revision, complication, cleft lip, whistle deformity). 3) Respond with structured JSON: {procedure, risk_flag, next_question}. Patient message: {{$json.Body}}"
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI Account"
+        }
+      }
+    },
+    {
+      "id": "Risk_Gate",
+      "name": "Risk Decision",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [600, 300],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.risk_flag}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Escalate_Staff",
+      "name": "Escalate to Staff",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [900, 150],
+      "parameters": {
+        "from": "+13100000000",
+        "to": "+13105555555",
+        "message": "URGENT MEDICAL REVIEW REQUIRED. Patient mentioned high-risk indicators. Please review manually."
+      }
+    },
+    {
+      "id": "Continue_Qualification",
+      "name": "Ask Qualification Question",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [900, 450],
+      "parameters": {
+        "from": "+13100000000",
+        "to": "={{$json.From}}",
+        "message": "={{$json.next_question}}"
+      }
+    }
+  ],
+  "connections": {
+    "Inbound SMS": {
+      "main": [[{ "node": "AI Triage", "type": "main", "index": 0 }]]
+    },
+    "AI Triage": {
+      "main": [[{ "node": "Risk Decision", "type": "main", "index": 0 }]]
+    },
+    "Risk Decision": {
+      "main": [
+        [{ "node": "Escalate to Staff", "type": "main", "index": 0 }],
+        [{ "node": "Ask Qualification Question", "type": "main", "index": 0 }]
+      ]
+    }
+  }
+}

@@ -1,0 +1,360 @@
+{
+  "name": "MiKO - Appointment Reminder Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Run Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  a.id,\n  a.lead_id,\n  a.patient_name,\n  a.patient_email,\n  a.patient_phone,\n  a.procedure,\n  a.consultation_type,\n  a.scheduled_time,\n  a.status,\n  a.google_meet_link,\n  COALESCE(\n    (SELECT array_agg(ar.reminder_type) \n     FROM appointment_reminders ar \n     WHERE ar.appointment_id = a.id \n     AND ar.delivery_status = 'sent'),\n    ARRAY[]::text[]\n  ) as sent_reminders\nFROM appointments a\nWHERE a.scheduled_time > NOW()\n  AND a.scheduled_time <= NOW() + INTERVAL '50 hours'\n  AND a.status IN ('confirmed', 'pending')\nORDER BY a.scheduled_time ASC;",
+        "options": {}
+      },
+      "id": "fetch-appointments",
+      "name": "Fetch Upcoming Appointments",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [470, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-postgres",
+          "name": "Supabase PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process each appointment and determine which reminders are due\nconst appointments = $input.all();\nconst results = [];\n\nfor (const item of appointments) {\n  const appt = item.json;\n  const scheduledTime = new Date(appt.scheduled_time);\n  const now = new Date();\n  const hoursUntil = (scheduledTime - now) / (1000 * 60 * 60);\n  \n  const sentReminders = appt.sent_reminders || [];\n  const dueReminders = [];\n  \n  // 48-hour reminder (send if 46-50 hours out)\n  if (hoursUntil >= 46 && hoursUntil <= 50 && !sentReminders.includes('reminder_48h')) {\n    dueReminders.push('reminder_48h');\n  }\n  \n  // 24-hour reminder (send if 22-26 hours out)\n  if (hoursUntil >= 22 && hoursUntil <= 26 && !sentReminders.includes('reminder_24h')) {\n    dueReminders.push('reminder_24h');\n  }\n  \n  // 2-hour reminder (send if 1.5-2.5 hours out)\n  if (hoursUntil >= 1.5 && hoursUntil <= 2.5 && !sentReminders.includes('reminder_2h')) {\n    dueReminders.push('reminder_2h');\n  }\n  \n  // Only include appointments with due reminders\n  if (dueReminders.length > 0) {\n    results.push({\n      json: {\n        ...appt,\n        dueReminders,\n        hoursUntil: Math.round(hoursUntil * 10) / 10\n      }\n    });\n  }\n}\n\nreturn results.length > 0 ? results : [{ json: { noRemindersdue: true } }];"
+      },
+      "id": "calculate-due-reminders",
+      "name": "Calculate Due Reminders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-reminders",
+              "leftValue": "={{ $json.noRemindersdue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-due-reminders",
+      "name": "Has Due Reminders?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "dueReminders",
+        "options": {}
+      },
+      "id": "split-reminders",
+      "name": "Split by Reminder Type",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [1130, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate email content based on reminder type\nconst appt = $input.first().json;\nconst reminderType = appt.dueReminders; // After split, this is a single value\nconst scheduledDate = new Date(appt.scheduled_time);\n\n// Format date/time\nconst dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };\nconst timeOptions = { hour: 'numeric', minute: '2-digit', hour12: true };\nconst formattedDate = scheduledDate.toLocaleDateString('en-US', dateOptions);\nconst formattedTime = scheduledDate.toLocaleTimeString('en-US', timeOptions);\n\nconst isVirtual = appt.consultation_type === 'virtual';\nconst meetLink = appt.google_meet_link || '';\n\nlet subject, body;\n\nswitch (reminderType) {\n  case 'reminder_48h':\n    subject = 'Your MiKO Consultation is in 2 Days';\n    body = `Dear ${appt.patient_name},\n\nThis is a friendly reminder that your consultation with Dr. Michael K. Obeng is scheduled for:\n\n📅 Date: ${formattedDate}\n🕐 Time: ${formattedTime} (Pacific Time)\n📍 Type: ${isVirtual ? 'Virtual Video Consultation' : 'In-Person at Beverly Hills Office'}\n\n${isVirtual ? `Your video consultation link will be sent 1 hour before your appointment.\n\nTo prepare for your virtual consultation:\n• Find a quiet, well-lit space\n• Test your camera and microphone\n• Have your medical history ready\n• Prepare any questions you'd like to ask` : `Our Beverly Hills office is located at:\n436 N Bedford Dr #305\nBeverly Hills, CA 90210\n\nParking is available in the building garage.\n\nPlease arrive 15 minutes early to complete any paperwork.`}\n\nIf you need to reschedule, please contact us at least 24 hours in advance:\n📞 (310) 275-2705\n✉️ office@mikoplasticsurgery.com\n\nWe look forward to seeing you!\n\nWarm regards,\nThe MiKO Plastic Surgery Team`;\n    break;\n\n  case 'reminder_24h':\n    subject = 'Your MiKO Consultation is Tomorrow';\n    body = `Dear ${appt.patient_name},\n\nYour consultation with Dr. Michael K. Obeng is tomorrow!\n\n📅 Date: ${formattedDate}\n🕐 Time: ${formattedTime} (Pacific Time)\n📍 Type: ${isVirtual ? 'Virtual Video Consultation' : 'In-Person Visit'}\n\n${isVirtual ? `✨ Preparation Checklist:\n□ Stable internet connection\n□ Quiet, private space\n□ Good lighting (face a window if possible)\n□ List of questions prepared\n□ Any photos you'd like to share` : `✨ What to Bring:\n□ Valid photo ID\n□ Insurance card (if applicable)\n□ List of current medications\n□ Any previous medical records\n□ Questions for Dr. Obeng`}\n\nNeed to make changes? Contact us:\n📞 (310) 275-2705\n\nSee you tomorrow!\n\nThe MiKO Plastic Surgery Team`;\n    break;\n\n  case 'reminder_2h':\n    subject = 'Your MiKO Consultation Starts Soon';\n    body = `Dear ${appt.patient_name},\n\nYour consultation with Dr. Obeng begins in 2 hours!\n\n🕐 Time: ${formattedTime} (Pacific Time)\n\n${isVirtual ? `🎥 Join Your Video Consultation:\n${meetLink || 'Your video link will be sent shortly'}\n\nQuick tech check:\n• Click the link above to test your connection\n• Allow camera and microphone access when prompted\n• If you have issues, call us at (310) 275-2705` : `📍 Location:\n436 N Bedford Dr #305\nBeverly Hills, CA 90210\n\nPlease arrive 10-15 minutes early.`}\n\nQuestions? Call us at (310) 275-2705\n\nSee you soon!\nThe MiKO Team`;\n    break;\n\n  default:\n    subject = 'MiKO Consultation Reminder';\n    body = `Dear ${appt.patient_name},\\n\\nThis is a reminder about your upcoming consultation.\\n\\nThe MiKO Team`;\n}\n\nreturn {\n  json: {\n    appointmentId: appt.id,\n    patientEmail: appt.patient_email,\n    patientName: appt.patient_name,\n    reminderType,\n    subject,\n    body,\n    scheduledTime: appt.scheduled_time\n  }\n};"
+      },
+      "id": "generate-email-content",
+      "name": "Generate Email Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO appointment_reminders (appointment_id, reminder_type, channel, scheduled_for, delivery_status)\nVALUES ('{{ $json.appointmentId }}', '{{ $json.reminderType }}', 'email', NOW(), 'pending')\nON CONFLICT (appointment_id, reminder_type) DO NOTHING\nRETURNING id;",
+        "options": {}
+      },
+      "id": "record-reminder-pending",
+      "name": "Record Reminder (Pending)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1570, 200],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-postgres",
+          "name": "Supabase PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "office@mikoplasticsurgery.com",
+        "toEmail": "={{ $json.patientEmail }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {
+          "replyTo": "office@mikoplasticsurgery.com"
+        }
+      },
+      "id": "send-reminder-email",
+      "name": "Send Reminder Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1790, 200],
+      "credentials": {
+        "smtp": {
+          "id": "gmail-smtp",
+          "name": "Gmail SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE appointment_reminders \nSET delivery_status = 'sent', \n    sent_at = NOW()\nWHERE appointment_id = '{{ $('Generate Email Content').item.json.appointmentId }}'\n  AND reminder_type = '{{ $('Generate Email Content').item.json.reminderType }}'\n  AND delivery_status = 'pending';",
+        "options": {}
+      },
+      "id": "update-reminder-sent",
+      "name": "Mark Reminder Sent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2010, 200],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-postgres",
+          "name": "Supabase PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE appointment_reminders \nSET delivery_status = 'failed', \n    delivery_error = '{{ $json.error.message || \"Unknown error\" }}'\nWHERE appointment_id = '{{ $('Generate Email Content').item.json.appointmentId }}'\n  AND reminder_type = '{{ $('Generate Email Content').item.json.reminderType }}'\n  AND delivery_status = 'pending';",
+        "options": {}
+      },
+      "id": "update-reminder-failed",
+      "name": "Mark Reminder Failed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2010, 400],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-postgres",
+          "name": "Supabase PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "No reminders due at this time"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "no-reminders-response",
+      "name": "No Reminders Due",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1130, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "email-success",
+              "leftValue": "={{ $json.accepted }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "email-sent-check",
+      "name": "Email Sent Successfully?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2010, 300]
+    }
+  ],
+  "connections": {
+    "Run Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Upcoming Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Upcoming Appointments": {
+      "main": [
+        [
+          {
+            "node": "Calculate Due Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Due Reminders": {
+      "main": [
+        [
+          {
+            "node": "Has Due Reminders?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Due Reminders?": {
+      "main": [
+        [
+          {
+            "node": "Split by Reminder Type",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Reminders Due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split by Reminder Type": {
+      "main": [
+        [
+          {
+            "node": "Generate Email Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Email Content": {
+      "main": [
+        [
+          {
+            "node": "Record Reminder (Pending)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Reminder (Pending)": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reminder Email": {
+      "main": [
+        [
+          {
+            "node": "Email Sent Successfully?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Sent Successfully?": {
+      "main": [
+        [
+          {
+            "node": "Mark Reminder Sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Reminder Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "instanceId": "miko-reminder-automation"
+  },
+  "tags": [
+    {
+      "name": "MiKO",
+      "id": "miko-tag"
+    },
+    {
+      "name": "Reminders",
+      "id": "reminders-tag"
+    },
+    {
+      "name": "Automation",
+      "id": "automation-tag"
+    }
+  ]
+}

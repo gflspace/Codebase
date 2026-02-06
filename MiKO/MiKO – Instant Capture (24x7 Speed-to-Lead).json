@@ -1,0 +1,84 @@
+{
+  "name": "MiKO – Instant Capture Engine",
+  "nodes": [
+    {
+      "id": "Webhook_Lead_Ingest",
+      "name": "Lead Ingest",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "miko/lead-capture",
+        "responseMode": "onReceived",
+        "responseCode": 200
+      }
+    },
+    {
+      "id": "Time_Check",
+      "name": "Time Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [300, 300],
+      "parameters": {
+        "conditions": {
+          "dateTime": [
+            {
+              "value1": "={{$now}}",
+              "operation": "between",
+              "value2": "09:00",
+              "value3": "17:00"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "SMS_Daytime",
+      "name": "Send SMS – Daytime",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [600, 150],
+      "parameters": {
+        "from": "+13100000000",
+        "to": "={{$json.phone}}",
+        "message": "Hello {{$json.name}}, this is the concierge for Dr. Obeng. We received your inquiry. Do you have a moment to answer 3 quick questions to see if you qualify for a consultation?"
+      },
+      "credentials": {
+        "twilioApi": {
+          "id": "TWILIO_CREDENTIAL_ID",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "id": "SMS_AfterHours",
+      "name": "Send SMS – After Hours",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [600, 450],
+      "parameters": {
+        "from": "+13100000000",
+        "to": "={{$json.phone}}",
+        "message": "Hello {{$json.name}}, our office is currently closed, but Dr. Obeng’s intake system is active. Let’s get your profile ready for priority review on Monday morning."
+      },
+      "credentials": {
+        "twilioApi": {
+          "id": "TWILIO_CREDENTIAL_ID",
+          "name": "Twilio Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Lead Ingest": {
+      "main": [[{ "node": "Time Check", "type": "main", "index": 0 }]]
+    },
+    "Time Check": {
+      "main": [
+        [{ "node": "Send SMS – Daytime", "type": "main", "index": 0 }],
+        [{ "node": "Send SMS – After Hours", "type": "main", "index": 0 }]
+      ]
+    }
+  }
+}

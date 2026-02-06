@@ -1,0 +1,27 @@
+I want to create a robust, self-healing lead processing workflow with the following steps
+
+Lead Scraping: Use Apify's code-crafter/leads-finder.
+Implement a client-side circuit breaker that aborts the run and fetches data immediately if results exceed specified limit + 20.
+
+Quality Verification: Verify that ≥95% of test leads match the target industry filters.
+
+Self-Healing Logic: If quality is <80%, the system should automatically retry once by using primary keywords from the first batch as refined industry filters.
+
+Use Million Verifier's Bulk V2 API for email verification.
+Upload to: https://bulkapi.millionverifier.com/bulkapi/v2/upload
+
+Poll status and download from:
+https://bulkapi.millionverifier.com/bulkapi/v2/download
+
+Proceed only with valid (verified) leads.
+
+Enrichment & Icebreakers:
+Research company news and person-specific facts to generate 3 genuine, non-creepy icebreakers.
+Do not start with any "welcome/intro" or "outro" or any "hello" or subject lines, just the icebreaker line itself.
+
+Map the output to a consistent personalization field and handle NaN cleaning to ensure valid JSON output.
+
+Instantly.ai Integration:
+Upload leads via the V2 API: POST https://api.instantly.ai/api/v2/leads
+
+Use the field name campaign (not campaign_id or campaignid) to ensure the leads are actually assigned to the campaign and visible in the dashboard.

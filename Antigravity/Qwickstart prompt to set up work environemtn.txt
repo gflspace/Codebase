@@ -1,0 +1,1 @@
+I want you to setup my environment in this project based on what is inside of the Quickstart.md file.

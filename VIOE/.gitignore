@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build outputs
+dist/
+build/
+*.local
+
+# Environment files (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# Editor and IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+nul
+
+# Claude session data
+.claude/
+tmpclaude-*
+
+# Archives (can be regenerated)
+*.zip
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/

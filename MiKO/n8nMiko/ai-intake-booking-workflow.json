@@ -1,0 +1,174 @@
+{
+  "name": "AI Intake → Calendar → Email (Auto-Generated)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-intake-booking",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-node-001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "ai-intake-booking-webhook"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list",
+          "cachedResultName": "primary"
+        },
+        "start": "={{ $json.start }}",
+        "end": "={{ $json.end }}",
+        "additionalFields": {
+          "summary": "Consultation - {{ $json.name }}",
+          "description": "Patient Name: {{ $json.name }}\nPatient Email: {{ $json.email }}\n\nBooked via MiKO AI Intake System"
+        }
+      },
+      "id": "calendar-node-001",
+      "name": "Create Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [500, 300],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "google-calendar-cred",
+          "name": "Google Calendar - MiKO"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Webhook').item.json.email }}",
+        "subject": "Your Consultation Is Confirmed",
+        "emailType": "text",
+        "message": "Dear {{ $('Webhook').item.json.name }},\n\nThank you for scheduling a consultation with MiKO Plastic Surgery.\n\nYour appointment details:\n\nDate & Time: {{ $('Webhook').item.json.start }}\n\nIf you need to reschedule or cancel, please contact us at:\nPhone: (310) 275-2705\nEmail: office@mikoplasticsurgery.com\n\nWe look forward to meeting you!\n\nWarm regards,\nThe MiKO Plastic Surgery Team\n\n---\nMiKO Plastic Surgery\nDr. Michael K. Obeng, MD, FACS\n436 N Bedford Dr #305\nBeverly Hills, CA 90210",
+        "options": {}
+      },
+      "id": "gmail-node-001",
+      "name": "Send Confirmation Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [750, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-cred",
+          "name": "Gmail - MiKO"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, message: 'Booking confirmed', calendarEventId: $('Create Calendar Event').item.json.id, email: $('Webhook').item.json.email }) }}",
+        "options": {}
+      },
+      "id": "response-node-001",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {},
+      "id": "error-trigger-001",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [250, 550]
+    },
+    {
+      "parameters": {
+        "sendTo": "admin@mikoplasticsurgery.com",
+        "subject": "Automated Booking Error",
+        "emailType": "text",
+        "message": "An error occurred in the AI Intake Booking workflow.\n\nError Details:\n{{ $json.error.message }}\n\nNode: {{ $json.error.node }}\nWorkflow: {{ $json.workflow.name }}\nExecution ID: {{ $json.execution.id }}\nTimestamp: {{ $json.execution.startedAt }}\n\nPlease investigate and resolve this issue.\n\n---\nMiKO Automated System",
+        "options": {}
+      },
+      "id": "admin-notify-001",
+      "name": "Notify Admin on Error",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [500, 550],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-cred",
+          "name": "Gmail - MiKO"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Create Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Confirmation Email": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Notify Admin on Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "instanceId": "miko-plastic-surgery-n8n"
+  },
+  "tags": [
+    {
+      "name": "MiKO",
+      "id": "miko-tag-001"
+    },
+    {
+      "name": "Booking",
+      "id": "booking-tag-001"
+    },
+    {
+      "name": "Automation",
+      "id": "automation-tag-001"
+    }
+  ]
+}

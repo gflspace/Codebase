@@ -1,0 +1,91 @@
+{
+  "name": "MiKO – Appointment Retention",
+  "nodes": [
+    {
+      "id": "Calendar_Trigger",
+      "name": "Appointment Booked",
+      "type": "n8n-nodes-base.googleCalendarTrigger",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "parameters": {
+        "calendar": "primary",
+        "event": "created"
+      }
+    },
+    {
+      "id": "Send_Confirmation_Email",
+      "name": "Send Confirmation Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [300, 300],
+      "parameters": {
+        "to": "={{$json.attendees[0].email}}",
+        "subject": "Your Consultation with Dr. Michael K. Obeng",
+        "text": "You are confirmed with Dr. Obeng, Harvard-trained plastic surgeon known as 'The Surgeon’s Surgeon.' We look forward to seeing you."
+      }
+    },
+    {
+      "id": "Wait_48_Hours",
+      "name": "Wait 48 Hours",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [600, 300],
+      "parameters": {
+        "amount": 48,
+        "unit": "hours"
+      }
+    },
+    {
+      "id": "Prep_SMS",
+      "name": "Preparation SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "parameters": {
+        "from": "+13100000000",
+        "to": "={{$json.attendees[0].phone}}",
+        "message": "Your consultation is approaching. Please review your preparation guide to ensure the best experience."
+      }
+    },
+    {
+      "id": "Wait_2_Hours",
+      "name": "Wait 2 Hours",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1200, 300],
+      "parameters": {
+        "amount": 2,
+        "unit": "hours"
+      }
+    },
+    {
+      "id": "Final_Confirm_SMS",
+      "name": "Final Confirmation SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1500, 300],
+      "parameters": {
+        "from": "+13100000000",
+        "to": "={{$json.attendees[0].phone}}",
+        "message": "Dr. Obeng is preparing for your consultation. Please reply C to confirm your arrival at 9301 Wilshire Blvd."
+      }
+    }
+  ],
+  "connections": {
+    "Appointment Booked": {
+      "main": [[{ "node": "Send Confirmation Email", "type": "main", "index": 0 }]]
+    },
+    "Send Confirmation Email": {
+      "main": [[{ "node": "Wait 48 Hours", "type": "main", "index": 0 }]]
+    },
+    "Wait 48 Hours": {
+      "main": [[{ "node": "Preparation SMS", "type": "main", "index": 0 }]]
+    },
+    "Preparation SMS": {
+      "main": [[{ "node": "Wait 2 Hours", "type": "main", "index": 0 }]]
+    },
+    "Wait 2 Hours": {
+      "main": [[{ "node": "Final Confirmation SMS", "type": "main", "index": 0 }]]
+    }
+  }
+}

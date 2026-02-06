@@ -1,0 +1,146 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import api from '@/lib/api'
+import Link from 'next/link'
+import SwipeContainer from '@/components/SwipeContainer'
+import CalendarAvailability from '@/components/CalendarAvailability'
+import MediaSlideshow from '@/components/MediaSlideshow'
+import SocialFeed from '@/components/SocialFeed'
+
+export default function Home() {
+  const router = useRouter()
+  const [socialLinks, setSocialLinks] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  const fetchData = async () => {
+    try {
+      const socialRes = await api.get('/social/public')
+      setSocialLinks(socialRes.data.socialLinks || [])
+    } catch (error) {
+      console.error('Failed to fetch data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAdminClick = () => {
+    const email = prompt('Admin Email:')
+    if (!email) return
+    
+    const password = prompt('Admin Password:')
+    if (!password) return
+
+    // Login as admin
+    api.post('/auth/login', { email, password })
+      .then((response) => {
+        localStorage.setItem('token', response.data.token)
+        localStorage.setItem('user', JSON.stringify(response.data.user))
+        router.push('/admin/dashboard')
+      })
+      .catch((error) => {
+        alert('Invalid admin credentials')
+      })
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    )
+  }
+
+  return (
+    <SwipeContainer className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <h1 className="text-2xl font-bold text-primary-700">DeeXHairlabb</h1>
+            </div>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={handleAdminClick}
+                className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm"
+              >
+                Admin
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Hero Section */}
+      <section className="py-12 px-4">
+        <div className="max-w-7xl mx-auto text-center">
+          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+            Professional Hair Braiding Services
+          </h2>
+          <p className="text-xl text-gray-600 mb-8">
+            Book your appointment instantly. No login required.
+          </p>
+        </div>
+      </section>
+
+      {/* Calendar Availability Section */}
+      <section className="py-12 px-4 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <CalendarAvailability />
+        </div>
+      </section>
+
+      {/* DeeXHairlabb Social Feed Section */}
+      <section className="py-12 px-4 bg-gray-50">
+        <div className="max-w-7xl mx-auto">
+          <SocialFeed />
+        </div>
+      </section>
+
+      {/* Media Slideshow Section */}
+      <section className="py-12 px-4 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <MediaSlideshow />
+        </div>
+      </section>
+
+      {/* Social Media Links */}
+      {socialLinks.length > 0 && (
+        <section className="py-12 px-4 bg-white">
+          <div className="max-w-7xl mx-auto text-center">
+            <h2 className="text-2xl font-bold mb-6 text-gray-900">Follow Us</h2>
+            <div className="flex justify-center space-x-6">
+              {socialLinks.map((link) => (
+                <a
+                  key={link.id}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-4xl hover:scale-110 transition transform"
+                >
+                  {link.platform === 'Instagram' && '📷'}
+                  {link.platform === 'Facebook' && '👥'}
+                  {link.platform === 'TikTok' && '🎵'}
+                  {!['Instagram', 'Facebook', 'TikTok'].includes(link.platform) && '🔗'}
+                </a>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-white py-8 px-4">
+        <div className="max-w-7xl mx-auto text-center">
+          <p>&copy; 2024 DeeXHairlabb. All rights reserved.</p>
+        </div>
+      </footer>
+    </SwipeContainer>
+  )
+}

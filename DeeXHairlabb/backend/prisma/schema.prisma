@@ -1,0 +1,398 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum PromotionStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  PAUSED
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  phone         String?
+  role          UserRole @default(ADMIN)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations (Admin only - for chat messages)
+  chatMessages  ChatMessage[]
+
+  @@map("users")
+}
+
+model Client {
+  id            String   @id @default(uuid())
+  firstName     String
+  lastName      String
+  phone         String
+  email         String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  appointments  Appointment[]
+  revenueLogs   RevenueLog[]
+
+  @@map("clients")
+}
+
+model Appointment {
+  id            String            @id @default(uuid())
+  clientId      String
+  adminId       String?           // Assigned stylist/admin
+  hairstyleName String            // Selected hairstyle
+  price         Decimal           @db.Decimal(10, 2)
+  startTime     DateTime          // Appointment start time
+  endTime       DateTime          // Appointment end time
+  duration      Int               // Duration in minutes (calculated)
+  status        AppointmentStatus @default(CONFIRMED)
+  notes         String?           // Client notes from booking
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  // Payment tracking (Admin completes)
+  depositAmount    Decimal?       @db.Decimal(10, 2) // Deposit collected
+  balanceRemaining Decimal?       @db.Decimal(10, 2) // Amount still owed
+  amountPaid       Decimal?       @db.Decimal(10, 2) // Actual payment received
+  tipAmount        Decimal?       @db.Decimal(10, 2) // Tips received
+  paymentMethod    String?        // cash, card, venmo, cashapp, zelle
+  paymentStatus    String?        @default("pending") // pending, partial, paid
+
+  // Service details (Admin completes after appointment)
+  actualDuration   Int?           // Actual time taken in minutes
+  beforePhotoUrl   String?        // Before photo
+  afterPhotoUrl    String?        // After photo
+  productsUsed     String[]       // Products used during service
+  adminNotes       String?        // Private admin notes
+
+  // Cancellation/No-show tracking
+  cancellationReason String?      // Why cancelled
+  noShowReason       String?      // Why no-show (if known)
+
+  // Client-provided details from booking
+  hairLength       String?        // short, medium, long, extra-long
+  hairType         String?        // natural, relaxed, transitioning, loc'd
+  referencePhotoUrl String?       // Client's inspiration photo
+  referralSource   String?        // How they found you
+
+  // Relations
+  client        Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  revenueLog    RevenueLog?
+
+  @@index([clientId])
+  @@index([startTime])
+  @@index([endTime])
+  @@index([status])
+  @@index([paymentStatus])
+  @@map("appointments")
+}
+
+model RevenueLog {
+  id            String      @id @default(uuid())
+  appointmentId String      @unique
+  clientId      String
+  amount        Decimal     @db.Decimal(10, 2)
+  hairstyleName String
+  date          DateTime    @default(now())
+  createdAt     DateTime    @default(now())
+
+  // Relations
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  client        Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([date])
+  @@map("revenue_logs")
+}
+
+model Hairstyle {
+  id            String   @id @default(uuid())
+  name          String
+  description   String?
+  imageUrl      String?
+  galleryUrls   String[] // Array of image URLs
+  price         Decimal? @db.Decimal(10, 2)
+  duration      Int?     // Duration in minutes
+  tags          String[]
+  featured      Boolean  @default(false)
+  published     Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("hairstyles")
+}
+
+model SocialMedia {
+  id            String   @id @default(uuid())
+  platform      String   // Instagram, Facebook, TikTok, etc.
+  url           String
+  icon          String?  // Icon name or URL
+  order         Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([platform])
+  @@map("social_media")
+}
+
+model BusinessHours {
+  id            String   @id @default(uuid())
+  dayOfWeek     Int      // 0 = Sunday, 1 = Monday, etc.
+  isOpen        Boolean  @default(true)
+  openTime      String?  // HH:mm format
+  closeTime     String?  // HH:mm format
+  isPublished   Boolean  @default(false) // Controls visibility to users
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([dayOfWeek])
+  @@map("business_hours")
+}
+
+model Promotion {
+  id            String          @id @default(uuid())
+  name          String
+  description   String
+  discountType  String          // "percentage" | "fixed"
+  discountValue Decimal         @db.Decimal(10, 2)
+  startDate     DateTime
+  endDate       DateTime
+  status        PromotionStatus @default(DRAFT)
+  applicableServices String[]   // Service names this applies to
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([status])
+  @@index([startDate, endDate])
+  @@map("promotions")
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  sessionId String   // Session ID for anonymous users
+  userId    String?  // Optional - only if admin
+  role      String   // "user" | "assistant" | "admin"
+  content   String
+  metadata  Json?    // For AI context, export requests, etc.
+  createdAt DateTime @default(now())
+
+  // Relations
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+model ExportRequest {
+  id          String   @id @default(uuid())
+  requestedBy String   // User ID
+  reportType  String   // "customers" | "appointments" | "revenue" | "promotions"
+  filters     Json?    // Time range, client filters, etc.
+  status      String   @default("pending") // "pending" | "processing" | "completed" | "failed"
+  googleSheetId String?
+  googleSheetUrl String?
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  @@index([requestedBy])
+  @@index([status])
+  @@map("export_requests")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String   // "export_requested" | "booking_created" | "revenue_logged" | etc.
+  resource    String?  // Resource ID
+  details     Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Media {
+  id            String   @id @default(uuid())
+  type          String   // "image" | "video"
+  url           String   // File URL or path
+  thumbnailUrl  String?  // For videos
+  caption       String?
+  description   String?
+  hairstyleId   String?  // Optional reference to hairstyle
+  clientId      String?  // Optional reference to client
+  uploadedBy    String?  // Admin user ID
+  order         Int      @default(0) // For display ordering
+  featured      Boolean  @default(false)
+  published     Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([hairstyleId])
+  @@index([clientId])
+  @@index([published])
+  @@index([createdAt])
+  @@map("media")
+}
+
+model CalendarBlock {
+  id            String   @id @default(uuid())
+  date          DateTime // Specific date (time set to 00:00:00)
+  startTime     DateTime? // Specific time slot start (if blocking specific time)
+  endTime       DateTime? // Specific time slot end (if blocking specific time)
+  isBlocked     Boolean  @default(true) // true = blocked, false = explicitly open
+  reason        String?  // Optional reason for block
+  createdBy     String   // Admin user ID
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([date])
+  @@index([startTime, endTime])
+  @@index([isBlocked])
+  @@map("calendar_blocks")
+}
+
+model FeedPost {
+  id            String   @id @default(uuid())
+  mediaId      String?  // Reference to Media model
+  type          String   // "image" | "video" | "text"
+  content       String?  // Text content (if text post)
+  mediaUrl      String?  // Direct media URL (if not using Media model)
+  thumbnailUrl  String?  // For videos
+  caption       String?
+  postedBy      String?  // Admin user ID
+  published     Boolean  @default(true)
+  engagementScore Float  @default(0) // Algorithmic score
+  likeCount     Int      @default(0) // Cached count
+  commentCount  Int      @default(0) // Cached count
+  shareCount    Int      @default(0) // Cached count
+  repostCount   Int      @default(0) // Cached count
+  viewCount     Int      @default(0) // For videos
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  likes         PostLike[]
+  comments      PostComment[]
+  shares        PostShare[]
+  reposts       PostRepost[]
+
+  @@index([published])
+  @@index([engagementScore])
+  @@index([createdAt])
+  @@map("feed_posts")
+}
+
+model PostLike {
+  id            String   @id @default(uuid())
+  postId        String
+  sessionId     String   // Anonymous user session ID
+  createdAt     DateTime @default(now())
+
+  // Relations
+  post          FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, sessionId]) // One like per session per post
+  @@index([postId])
+  @@index([sessionId])
+  @@map("post_likes")
+}
+
+model PostComment {
+  id            String   @id @default(uuid())
+  postId        String
+  parentId      String?  // For nested replies
+  sessionId     String   // Anonymous user session ID
+  content       String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  post          FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parent        PostComment? @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies       PostComment[] @relation("CommentReplies")
+
+  @@index([postId])
+  @@index([sessionId])
+  @@index([parentId])
+  @@map("post_comments")
+}
+
+model PostShare {
+  id            String   @id @default(uuid())
+  postId        String
+  sessionId     String   // Anonymous user session ID
+  shareType     String   @default("link") // "link" | "in_app"
+  createdAt     DateTime @default(now())
+
+  // Relations
+  post          FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([sessionId])
+  @@map("post_shares")
+}
+
+model PostRepost {
+  id            String   @id @default(uuid())
+  postId        String
+  sessionId     String   // Anonymous user session ID
+  createdAt     DateTime @default(now())
+
+  // Relations
+  post          FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, sessionId]) // One repost per session per post
+  @@index([postId])
+  @@index([sessionId])
+  @@map("post_reposts")
+}
+
+model FeedEngagement {
+  id            String   @id @default(uuid())
+  postId        String
+  sessionId     String   // Anonymous user session ID
+  action        String   // "view" | "swipe" | "watch_time"
+  value         Float?   // For watch time, swipe duration, etc.
+  metadata      Json?    // Additional engagement data
+  createdAt     DateTime @default(now())
+
+  @@index([postId])
+  @@index([sessionId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("feed_engagement")
+}
