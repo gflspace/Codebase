@@ -35,7 +35,7 @@ export default function RiskTrends() {
   const [tierFilter, setTierFilter] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadScores(); }, [tierFilter]);
+  useEffect(() => { loadScores(); }, [tierFilter, auth.token]);
 
   async function loadScores() {
     if (!auth.token) return;

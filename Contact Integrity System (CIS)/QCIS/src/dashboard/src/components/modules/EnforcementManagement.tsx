@@ -31,7 +31,7 @@ export default function EnforcementManagement() {
   const [reverseModal, setReverseModal] = useState<string | null>(null);
   const [reverseReason, setReverseReason] = useState('');
 
-  useEffect(() => { loadActions(); }, []);
+  useEffect(() => { loadActions(); }, [auth.token]);
 
   async function loadActions() {
     if (!auth.token) return;

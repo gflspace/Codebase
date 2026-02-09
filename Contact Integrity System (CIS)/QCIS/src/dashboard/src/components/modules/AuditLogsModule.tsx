@@ -21,7 +21,7 @@ export default function AuditLogsModule() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ action: '', entity_type: '' });
 
-  useEffect(() => { loadLogs(); }, [filters]);
+  useEffect(() => { loadLogs(); }, [filters, auth.token]);
 
   async function loadLogs() {
     if (!auth.token) return;

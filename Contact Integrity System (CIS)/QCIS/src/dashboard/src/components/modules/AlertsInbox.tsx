@@ -30,7 +30,7 @@ export default function AlertsInbox() {
 
   useEffect(() => {
     loadAlerts();
-  }, [filter]);
+  }, [filter, auth.token]);
 
   async function loadAlerts() {
     if (!auth.token) return;

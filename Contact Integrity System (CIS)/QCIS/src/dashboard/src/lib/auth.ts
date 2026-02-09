@@ -36,7 +36,7 @@ export function hasAccess(role: string, module: string): boolean {
   const ACCESS_MATRIX: Record<string, Record<string, boolean>> = {
     trust_safety: {
       alerts: true, cases: true, enforcement: true, risk_trends: true,
-      appeals: true, system_health: false, audit_logs: true,
+      appeals: true, system_health: true, audit_logs: true,
     },
     ops: {
       alerts: true, cases: false, enforcement: false, risk_trends: true,

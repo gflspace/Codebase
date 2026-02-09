@@ -33,7 +33,7 @@ export default function AppealsModule() {
     status: 'approved', notes: '',
   });
 
-  useEffect(() => { loadAppeals(); }, []);
+  useEffect(() => { loadAppeals(); }, [auth.token]);
 
   async function loadAppeals() {
     if (!auth.token) return;

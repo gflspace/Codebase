@@ -31,7 +31,7 @@ export default function CaseInvestigation() {
   const [newNote, setNewNote] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadCases(); }, []);
+  useEffect(() => { loadCases(); }, [auth.token]);
 
   async function loadCases() {
     if (!auth.token) return;
