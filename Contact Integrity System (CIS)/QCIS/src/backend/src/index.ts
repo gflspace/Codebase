@@ -30,7 +30,7 @@ const app = express();
 // Global middleware
 app.use(helmet());
 app.use(cors({
-  origin: config.dashboardUrl,
+  origin: [config.dashboardUrl, config.apiBaseUrl],
   credentials: true,
 }));
 app.use(express.json({ limit: '1mb' }));
