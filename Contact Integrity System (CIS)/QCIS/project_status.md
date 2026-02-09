@@ -154,6 +154,7 @@
 - (2026-02-09) Deployment required two TypeScript build fixes: `@types/jsonwebtoken` StringValue type and optional chaining null safety. Both fixed locally and on VPS.
 - (2026-02-09) DB connection from VPS uses `localhost` with `DB_SSL=false` (no SSL needed for same-machine connection). pg_hba.conf `host` rule for `127.0.0.1/32` with `scram-sha-256` handles auth.
 - (2026-02-09) SSL setup was straightforward: DNS A record at GoDaddy, Certbot `--nginx` plugin auto-configured Nginx with SSL + redirect. No manual Nginx SSL config needed.
+- (2026-02-09) Static Nginx `location /` placeholder caused confusion — replaced with proxy to backend. All routing should go through the application for consistency and maintainability.
 
 ---
 

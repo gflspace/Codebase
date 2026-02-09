@@ -256,3 +256,35 @@
 | `project_status.md` | Infrastructure table, next steps |
 
 ---
+
+## 2026-02-09 — Root Route Fix: Proxy All Traffic Through Backend
+
+**Phase:** BUILD (routing fix)
+**Agent:** Master Claude
+
+### Changes
+
+- **Nginx `location /` updated** — replaced static JSON placeholder with proxy to backend
+  - Previously returned hardcoded `{"service":"QwickServices CIS","status":"running","api":"/api/health"}`
+  - Now proxies to `127.0.0.1:3001` like `/api/` routes, letting the backend handle all requests
+- **Backend root route added** (`GET /`) in `index.ts`
+  - Returns service info: name, version, status, and endpoint links
+- **All 94 tests passing** — no regressions
+
+### Verification Evidence
+
+| Check | Result |
+|---|---|
+| `curl https://cis.qwickservices.com/` | 200 `{"service":"QwickServices Contact Integrity System","version":"0.1.0","status":"running","endpoints":{...}}` |
+| `curl https://cis.qwickservices.com/api/health` | 200 `{"status":"healthy","database":"connected"}` |
+| Unit tests | 94/94 passing |
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `src/backend/src/index.ts` | Added `GET /` root route with service info |
+| `/etc/nginx/sites-available/qcis` | `location /` now proxies to backend instead of static response |
+| `changelog.md` | This entry |
+
+---
