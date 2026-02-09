@@ -95,6 +95,16 @@ sudo -u postgres psql -d qwick_cis
 | Health Check | `https://cis.qwickservices.com/api/health` | 200 OK |
 | App Port | 3001 (proxied via Nginx 443 SSL + 80→HTTPS redirect) | Verified |
 
+### Admin User (Trust & Safety)
+
+| Key | Value | Status |
+|---|---|---|
+| Email | `admin@qwickservices.com` | Active |
+| Password | `QwickCIS2026admin` | Active |
+| Role | `trust_safety` | Verified |
+| Auth Method | SHA256 hash → JWT (24h expiry) | Verified |
+| Login Endpoint | `POST https://cis.qwickservices.com/api/auth/login` | E2E verified |
+
 ### Firewall (UFW)
 
 | Rule | Port | Status |
@@ -183,4 +193,4 @@ All credential changes must be logged in `changelog.md`.
 
 ---
 
-**Status:** Deployed — VPS, PostgreSQL, Backend API live at https://cis.qwickservices.com (SSL active, 2026-02-09)
+**Status:** Deployed & E2E Verified — VPS, PostgreSQL, Backend API live at https://cis.qwickservices.com (SSL active, full pipeline tested, 2026-02-09)

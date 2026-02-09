@@ -288,3 +288,53 @@
 | `changelog.md` | This entry |
 
 ---
+
+## 2026-02-09 — Production E2E Test: Full Pipeline Verified over HTTPS
+
+**Phase:** BUILD (production validation)
+**Agent:** Master Claude
+
+### Changes
+
+- **Admin user created** in `admin_users` table
+  - Email: `admin@qwickservices.com`, role: `trust_safety`
+  - Password hashed via SHA256
+- **Full E2E pipeline tested** over `https://cis.qwickservices.com` with live data
+
+### E2E Test Flow & Results
+
+| Step | Endpoint | Result |
+|---|---|---|
+| Health Check | `GET /api/health` | 200 — healthy, DB connected |
+| Auth Login | `POST /api/auth/login` | JWT token issued for `trust_safety` role |
+| Create Sender | `POST /api/users` | `d68ec8ce` — E2E Test Sender, trust_score 50.00 |
+| Create Receiver | `POST /api/users` | `d40d9447` — E2E Test Receiver, trust_score 50.00 |
+| Sync Detection | `POST /api/analyze-event` | 4 signals in 35ms (CONTACT_PHONE, CONTACT_EMAIL, CONTACT_MESSAGING_APP, OFF_PLATFORM_INTENT) |
+| Async Pipeline | `POST /api/events` | 202 Accepted — full pipeline triggered |
+| Detection Output | `GET /api/risk-signals` | 8 total signals (added CONTACT_SOCIAL, PAYMENT_EXTERNAL with ESCALATION_PATTERN flags) |
+| Scoring Output | `GET /api/risk-scores/user/:id` | Score: 31.80, tier: `low`, trend: `stable`, factors: behavioral 72, operational 10 |
+| Enforcement Output | `GET /api/enforcement-actions` | `soft_warning` issued (shadow_mode: true), reason: `LOW_RISK_FIRST_OFFENSE` |
+| Audit Trail | `GET /api/audit-logs` | Events logged with timestamps and actor tracking |
+| Shadow Status | `GET /api/shadow/status` | 16 signals, 2 shadow actions, 0 dead letter queue, readiness checklist active |
+
+### Pipeline Timing (Async via Event Bus)
+
+| Stage | Trigger Delay | Output |
+|---|---|---|
+| Detection | Immediate | 4 signals → `risk_signals` table |
+| Scoring | +500ms | Score 31.80/low → `risk_scores` table |
+| Enforcement | +1500ms | soft_warning → `enforcement_actions` table |
+
+### Test Messages Used
+
+1. **Sync** (`/api/analyze-event`): `"Hey, call me at 555-867-5309 or email me at john@gmail.com instead of using this app. Lets meet on WhatsApp to arrange payment outside the platform."`
+2. **Async** (`/api/events`): `"Text me on Telegram @johnpay99 for cash payment off this site. My venmo is john-pays. Dont use the app payment."`
+
+### Notes
+
+- `/api/analyze-event` runs detection synchronously (returns signals immediately) but does NOT trigger scoring or enforcement
+- `/api/events` emits to the event bus, triggering the full async pipeline (detection → scoring → enforcement)
+- Shadow mode confirmed active — enforcement actions logged but not applied to user accounts
+- Admin credentials documented in `plugins_mcp.md`
+
+---
