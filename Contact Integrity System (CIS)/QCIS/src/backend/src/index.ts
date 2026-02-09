@@ -35,6 +35,19 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '1mb' }));
 
+// Root route
+app.get('/', (_req, res) => {
+  res.json({
+    service: 'QwickServices Contact Integrity System',
+    version: '0.1.0',
+    status: 'running',
+    endpoints: {
+      health: '/api/health',
+      docs: '/api',
+    },
+  });
+});
+
 // Routes
 app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
