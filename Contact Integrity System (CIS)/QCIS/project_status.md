@@ -88,21 +88,21 @@
 
 ## Database Tables (14)
 
-| Table | Purpose | Rows (test) |
+| Table | Purpose | Rows |
 |---|---|---|
-| `users` | Platform user accounts | 2 |
-| `messages` | Message history | 0 |
+| `users` | Platform user accounts | 7 |
+| `messages` | Message history | 6 |
 | `transactions` | Payment transactions | 0 |
-| `risk_signals` | Detection output | 8 |
-| `risk_scores` | Scored risk tiers | 1 |
-| `enforcement_actions` | Automated/manual actions | 1 |
-| `audit_logs` | Full audit trail | 2 |
-| `alerts` | Trust & safety alerts | 0 |
-| `cases` | Investigation cases | 0 |
-| `case_notes` | Case annotations | 0 |
+| `risk_signals` | Detection output | 22 |
+| `risk_scores` | Scored risk tiers | 2 |
+| `enforcement_actions` | Automated/manual actions | 2 |
+| `audit_logs` | Full audit trail | 15 |
+| `alerts` | Trust & safety alerts | 5 |
+| `cases` | Investigation cases | 3 |
+| `case_notes` | Case annotations | 7 |
 | `appeals` | User appeal submissions | 0 |
-| `admin_users` | Dashboard admin accounts | 0 |
-| `processed_events` | Event dedup tracking | 2 |
+| `admin_users` | Dashboard admin accounts | 1 |
+| `processed_events` | Event dedup tracking | 3 |
 | `schema_migrations` | Migration history | 9 |
 
 ## Agent Status
@@ -131,8 +131,9 @@
 10. **Build event emission layer** — Sidebase domain event pipeline
 11. **Deploy detection orchestrator** — Claude Code integration via API contract
 12. ~~**Build admin dashboard**~~ — Next.js static export with RBAC, 7 modules, deployed to VPS (2026-02-09)
-13. **Run simulation/testing** — Playwright + pre-production evaluation
-14. **Shadow deployment** — Monitor-only mode before active enforcement
+13. ~~**Seed dashboard test data**~~ — 5 alerts (all statuses), 3 cases, 7 notes, 6 messages, 22 signals, 15 audit logs — E2E dashboard validation ready (2026-02-09)
+14. **Run simulation/testing** — Playwright + pre-production evaluation
+15. **Shadow deployment** — Monitor-only mode before active enforcement
 
 ---
 
@@ -167,4 +168,4 @@
 
 ---
 
-**Factory Status:** BUILD Phase Active — Dashboard Deployed, Hardening Complete (2026-02-09)
+**Factory Status:** BUILD Phase Active — Dashboard Deployed, Test Data Seeded, E2E Validation Ready (2026-02-09)

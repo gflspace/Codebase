@@ -465,3 +465,50 @@
 | `project_status.md` | Dashboard marked as deployed |
 
 ---
+
+## 2026-02-09 — Seeded CIS Dashboard Test Data for E2E Validation
+
+**Phase:** BUILD (dashboard E2E test readiness)
+**Agent:** Master Claude
+
+### Changes
+
+- **Created idempotent test data seed script** (`seed-test-data.sql`)
+  - All records use fixed UUIDs for idempotency (ON CONFLICT DO NOTHING)
+  - All metadata tagged with `"test_data": true`
+  - Companion reset script (`reset-test-data.sql`) for clean teardown
+
+- **Seeded entities (cross-linked, internally consistent):**
+
+| Entity | Count | Details |
+|---|---|---|
+| Users | 3 new (7 total) | user_med_1 (Maria Chen, score 55), user_high_1 (James Rodriguez, score 78), user_sys (system actor) |
+| Messages | 6 | 3 conversations (2 messages each) with off-platform signals |
+| Risk Signals | 6 new (22 total) | 3 for user_med_1 (WhatsApp, Venmo, off-platform), 3 for user_high_1 (CashApp, TX redirect, ban evasion) |
+| Alerts | 5 | All statuses: open, assigned, in_progress, resolved, dismissed |
+| Cases | 3 | open, investigating, closed — each with linked alerts and case notes |
+| Case Notes | 7 | Investigation timeline entries across all 3 cases |
+| Enforcement | 2 (existing) | Linked to risk_score_ids |
+| Risk Scores | 2 (existing) | low: 2 (31.80, 34.80), all other tiers: 0 |
+| Appeals | 0 | Empty state preserved for UI validation |
+| Audit Logs | 12 new (15 total) | alert.created, case.created, case.closed, alert.assigned, alert.status_changed, alert.resolved, alert.dismissed, enforcement.shadow.soft_warning |
+
+### Verification Results
+
+| Dashboard Module | Expected State | API Result |
+|---|---|---|
+| Alerts & Inbox | 5 alerts, all statuses represented | 5/5 statuses confirmed |
+| Case Investigation | 3 selectable cases with timelines | 3 cases, 7 notes |
+| Enforcement Management | 2 active soft warnings | 2/2 active, reversible |
+| Risk & Trends | monitor:0, low:2, med:0, high:0, crit:0 | 2 low-tier scores |
+| Appeals | Empty state | 0 appeals |
+| Audit Logs | System + admin events | 15 entries, 9 action types |
+
+### Files Created
+
+| File | Purpose |
+|---|---|
+| `src/backend/src/database/seed-test-data.sql` | Idempotent seed script |
+| `src/backend/src/database/reset-test-data.sql` | Clean teardown script |
+
+---
