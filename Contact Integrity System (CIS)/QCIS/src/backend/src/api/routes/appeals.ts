@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query } from '../../database/connection';
+import { query, transaction } from '../../database/connection';
 import { authenticateJWT, requireRole } from '../middleware/auth';
 import { validate, validateQuery, validateParams } from '../middleware/validation';
 import { createAppealSchema, resolveAppealSchema, uuidParam, paginationQuery } from '../schemas';
@@ -44,6 +44,7 @@ router.get(
 // POST /api/appeals
 router.post(
   '/',
+  authenticateJWT,
   validate(createAppealSchema),
   async (req: Request, res: Response) => {
     try {
@@ -98,31 +99,73 @@ router.post(
     try {
       const { status, resolution_notes } = req.body;
 
-      const result = await query(
-        `UPDATE appeals
-         SET status = $1, resolution_notes = $2, resolved_by = $3, resolved_at = NOW()
-         WHERE id = $4 AND status IN ('submitted', 'under_review')
-         RETURNING *`,
-        [status, resolution_notes, req.adminUser!.id, req.params.id]
-      );
+      const result = await transaction(async (client) => {
+        const appealResult = await client.query(
+          `UPDATE appeals
+           SET status = $1, resolution_notes = $2, resolved_by = $3, resolved_at = NOW()
+           WHERE id = $4 AND status IN ('submitted', 'under_review')
+           RETURNING *`,
+          [status, resolution_notes, req.adminUser!.id, req.params.id]
+        );
 
-      if (result.rows.length === 0) {
+        if (appealResult.rows.length === 0) {
+          return null;
+        }
+
+        const appeal = appealResult.rows[0];
+
+        // If approved, reverse the enforcement action AND restore user status
+        if (status === 'approved') {
+          // Get the enforcement action to find the user_id
+          const actionResult = await client.query(
+            'SELECT user_id, action_type FROM enforcement_actions WHERE id = $1',
+            [appeal.enforcement_action_id]
+          );
+
+          // Reverse the enforcement action
+          await client.query(
+            `UPDATE enforcement_actions
+             SET reversed_at = NOW(), reversed_by = $1, reversal_reason = $2
+             WHERE id = $3`,
+            [req.adminUser!.id, `Appeal approved: ${resolution_notes}`, appeal.enforcement_action_id]
+          );
+
+          // Restore user status to 'active' if they were restricted/suspended
+          if (actionResult.rows.length > 0) {
+            const { user_id, action_type } = actionResult.rows[0];
+            if (['temporary_restriction', 'account_suspension'].includes(action_type)) {
+              await client.query(
+                "UPDATE users SET status = 'active' WHERE id = $1 AND status IN ('restricted', 'suspended')",
+                [user_id]
+              );
+            }
+          }
+
+          // Audit log for the reversal
+          await client.query(
+            `INSERT INTO audit_logs (id, actor, actor_type, action, entity_type, entity_id, details)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              generateId(), req.adminUser!.id, 'admin', 'enforcement.reversed',
+              'user', actionResult.rows[0]?.user_id || appeal.user_id,
+              JSON.stringify({
+                appeal_id: appeal.id,
+                enforcement_action_id: appeal.enforcement_action_id,
+                resolution_notes,
+              }),
+            ]
+          );
+        }
+
+        return appeal;
+      });
+
+      if (!result) {
         res.status(404).json({ error: 'Appeal not found or already resolved' });
         return;
       }
 
-      // If approved, reverse the enforcement action
-      if (status === 'approved') {
-        const appeal = result.rows[0];
-        await query(
-          `UPDATE enforcement_actions
-           SET reversed_at = NOW(), reversed_by = $1, reversal_reason = $2
-           WHERE id = $3`,
-          [req.adminUser!.id, `Appeal approved: ${resolution_notes}`, appeal.enforcement_action_id]
-        );
-      }
-
-      res.json({ data: result.rows[0] });
+      res.json({ data: result });
     } catch (error) {
       console.error('Resolve appeal error:', error);
       res.status(500).json({ error: 'Internal server error' });

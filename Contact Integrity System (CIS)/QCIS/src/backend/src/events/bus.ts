@@ -27,10 +27,25 @@ class EventBus {
   }
 
   async emit(event: DomainEvent): Promise<void> {
-    // Idempotency: skip already-processed events
+    // Idempotency: skip already-processed events (check in-memory first, then DB)
     if (this.processedEvents.has(event.id)) {
       console.log(`[EventBus] Duplicate event skipped: ${event.id}`);
       return;
+    }
+
+    // Check database for events processed before last restart
+    try {
+      const dbCheck = await query(
+        'SELECT event_id FROM processed_events WHERE event_id = $1',
+        [event.id]
+      );
+      if (dbCheck.rows.length > 0) {
+        this.processedEvents.add(event.id); // Cache for future lookups
+        console.log(`[EventBus] Duplicate event skipped (DB): ${event.id}`);
+        return;
+      }
+    } catch {
+      // Non-critical — proceed with processing if DB check fails
     }
 
     // Persist to audit log

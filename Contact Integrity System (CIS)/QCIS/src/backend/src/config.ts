@@ -15,6 +15,18 @@ function optional(key: string, fallback: string): string {
   return process.env[key] || fallback;
 }
 
+function requiredInProduction(key: string, devFallback: string): string {
+  const value = process.env[key];
+  if (!value) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(`Missing required environment variable in production: ${key}`);
+    }
+    console.warn(`[Config] WARNING: Using default ${key} — set in production!`);
+    return devFallback;
+  }
+  return value;
+}
+
 export const config = {
   port: parseInt(optional('PORT', '3001'), 10),
   nodeEnv: optional('NODE_ENV', 'development'),
@@ -30,12 +42,12 @@ export const config = {
   },
 
   jwt: {
-    secret: optional('JWT_SECRET', 'dev_jwt_secret_change_in_production'),
+    secret: requiredInProduction('JWT_SECRET', 'dev_jwt_secret_change_in_production'),
     expiresIn: optional('JWT_EXPIRES_IN', '24h'),
   },
 
   hmac: {
-    secret: optional('HMAC_SECRET', 'dev_hmac_secret_change_in_production'),
+    secret: requiredInProduction('HMAC_SECRET', 'dev_hmac_secret_change_in_production'),
   },
 
   shadowMode: optional('SHADOW_MODE', 'true') === 'true',

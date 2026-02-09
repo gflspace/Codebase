@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { query } from '../../database/connection';
 import { generateToken, authenticateJWT } from '../middleware/auth';
@@ -24,9 +25,23 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
 
     const user = result.rows[0];
 
-    // Compare password hash
-    const hash = crypto.createHash('sha256').update(password).digest('hex');
-    if (hash !== user.password_hash) {
+    // Compare password: support bcrypt (preferred) and SHA256 (legacy)
+    let passwordValid = false;
+    if (user.password_hash.startsWith('$2a$') || user.password_hash.startsWith('$2b$')) {
+      // bcrypt hash
+      passwordValid = await bcrypt.compare(password, user.password_hash);
+    } else {
+      // Legacy SHA256 — migrate to bcrypt on successful login
+      const sha256Hash = crypto.createHash('sha256').update(password).digest('hex');
+      passwordValid = sha256Hash === user.password_hash;
+      if (passwordValid) {
+        const bcryptHash = await bcrypt.hash(password, 12);
+        await query('UPDATE admin_users SET password_hash = $1 WHERE id = $2', [bcryptHash, user.id]);
+        console.log(`[Auth] Migrated user ${user.email} from SHA256 to bcrypt`);
+      }
+    }
+
+    if (!passwordValid) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }

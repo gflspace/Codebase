@@ -338,3 +338,66 @@
 - Admin credentials documented in `plugins_mcp.md`
 
 ---
+
+## 2026-02-09 — Critical Bug Fixes: Security, Appeals, Audit, Dedup, Config
+
+**Phase:** BUILD (hardening)
+**Agent:** Master Claude
+
+### Changes
+
+- **[CRITICAL] Appeal approval now restores user status** (`appeals.ts`)
+  - Previously: approving an appeal reversed the enforcement action (`reversed_at` set) but did NOT restore the user's `status` from `restricted`/`suspended` back to `active`
+  - Fix: wrapped in database transaction — atomically reverses enforcement action + restores user status + writes audit log
+  - Audit log entry created for every enforcement reversal with appeal details
+
+- **[CRITICAL] POST /api/appeals now requires authentication** (`appeals.ts`)
+  - Previously: `POST /api/appeals` had NO `authenticateJWT` middleware — any unauthenticated request could submit appeals
+  - Fix: added `authenticateJWT` middleware before validation
+
+- **[HIGH] Shadow mode enforcement now writes audit logs** (`actions.ts`)
+  - Previously: shadow mode persisted the enforcement action to DB but did NOT create an audit log entry (active mode did)
+  - Fix: added audit log insert with `enforcement.shadow.<action>` action type for full observability
+
+- **[HIGH] Event bus dedup now checks database after restart** (`bus.ts`)
+  - Previously: `emit()` only checked in-memory `Set` for duplicates — on restart, the Set was empty and all events would be re-processed
+  - The `processed_events` DB table was written to but never read during dedup checks
+  - Fix: added DB fallback check in `emit()` when the in-memory Set doesn't contain the event ID, with cache-back to Set for future lookups
+
+- **[HIGH] Password hashing upgraded from SHA256 to bcrypt** (`auth.ts`)
+  - Previously: used `crypto.createHash('sha256')` — fast hash with no salt, vulnerable to rainbow tables
+  - Fix: installed `bcryptjs`, login now supports both bcrypt (preferred) and SHA256 (legacy migration)
+  - Legacy SHA256 passwords are automatically migrated to bcrypt (cost factor 12) on successful login
+
+- **[MEDIUM] JWT_SECRET and HMAC_SECRET now required in production** (`config.ts`)
+  - Previously: both used `optional()` with weak dev defaults that silently fell through in production
+  - Fix: new `requiredInProduction()` helper — throws on missing value when `NODE_ENV=production`, warns in dev
+
+### Dependencies Added
+
+| Package | Version | Purpose |
+|---|---|---|
+| `bcryptjs` | ^2.4.3 | Secure password hashing with salt |
+| `@types/bcryptjs` | ^2.4.6 | TypeScript types (devDep) |
+
+### Verification
+
+| Check | Result |
+|---|---|
+| Unit tests | 94/94 passing |
+| TypeScript compilation | Clean (0 errors) |
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `src/backend/src/api/routes/appeals.ts` | Auth on POST, transaction for approval + user status restore + audit log |
+| `src/backend/src/api/routes/auth.ts` | bcrypt support with SHA256→bcrypt auto-migration |
+| `src/backend/src/enforcement/actions.ts` | Shadow mode audit logging |
+| `src/backend/src/events/bus.ts` | DB fallback for dedup on restart |
+| `src/backend/src/config.ts` | `requiredInProduction()` for secrets |
+| `src/backend/package.json` | Added bcryptjs dependency |
+| `changelog.md` | This entry |
+| `project_status.md` | Updated |
+
+---

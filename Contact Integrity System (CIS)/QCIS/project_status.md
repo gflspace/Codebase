@@ -5,7 +5,7 @@
 
 ---
 
-## Current Phase: BUILD (backend deployed to production)
+## Current Phase: BUILD (hardening — critical bugs fixed)
 
 ### Phase Progress
 
@@ -13,7 +13,7 @@
 |---|---|---|
 | PLAN | Complete | 6/6 documents finalized |
 | SETUP | Complete | 4/4 documents finalized |
-| BUILD | In Progress | Backend deployed to VPS, API live at https://cis.qwickservices.com (SSL), DB connected, 9/9 migrations, E2E verified |
+| BUILD | In Progress | Backend deployed to VPS, API live at https://cis.qwickservices.com (SSL), DB connected, 9/9 migrations, E2E verified, critical bugs fixed |
 
 ---
 
@@ -126,11 +126,12 @@
 6. ~~**Deploy backend to VPS**~~ — Node.js + PM2 + Nginx, API live at http://72.60.68.137 (2026-02-09)
 7. ~~**Enable HTTPS (SSL)**~~ — Let's Encrypt cert for `cis.qwickservices.com`, auto-renewal, HTTP redirect (2026-02-09)
 8. ~~**Production E2E test**~~ — Full pipeline verified over HTTPS: auth → users → detection (8 signals) → scoring (31.80/low) → enforcement (soft_warning/shadow) → audit (2026-02-09)
-9. **Build event emission layer** — Sidebase domain event pipeline
-10. **Deploy detection orchestrator** — Claude Code integration via API contract
-11. **Build admin dashboard** — React/Next.js with RBAC
-12. **Run simulation/testing** — Playwright + pre-production evaluation
-13. **Shadow deployment** — Monitor-only mode before active enforcement
+9. ~~**Critical bug fixes & hardening**~~ — 6 issues fixed: appeal user status restore, appeals auth, shadow audit logs, event bus dedup persistence, bcrypt password hashing, production secret enforcement (2026-02-09)
+10. **Build event emission layer** — Sidebase domain event pipeline
+11. **Deploy detection orchestrator** — Claude Code integration via API contract
+12. **Build admin dashboard** — React/Next.js with RBAC
+13. **Run simulation/testing** — Playwright + pre-production evaluation
+14. **Shadow deployment** — Monitor-only mode before active enforcement
 
 ---
 
@@ -158,7 +159,9 @@
 - (2026-02-09) Static Nginx `location /` placeholder caused confusion — replaced with proxy to backend. All routing should go through the application for consistency and maintainability.
 - (2026-02-09) `/api/analyze-event` only runs detection synchronously — it does NOT trigger scoring or enforcement. Use `/api/events` for the full async pipeline (detection → scoring → enforcement). Both endpoints serve different purposes.
 - (2026-02-09) Shell escaping across SSH + bash layers corrupts special characters in JSON payloads. Use Python or temp files to construct JSON on the remote server to avoid `\!` and similar issues.
+- (2026-02-09) CIS Readiness Assessment scored 38/100 with 15 issues across 7 layers. Critical bugs: appeal reversal not restoring user status, unauthenticated appeals endpoint, shadow mode missing audit logs, in-memory-only event dedup. All 6 highest-priority issues fixed in one pass.
+- (2026-02-09) SHA256 password hashing is inadequate for production. Migrated to bcrypt with automatic legacy migration — existing SHA256 hashes are upgraded to bcrypt on next successful login. No manual password resets needed.
 
 ---
 
-**Factory Status:** BUILD Phase Active — E2E Verified on Production with SSL (2026-02-09)
+**Factory Status:** BUILD Phase Active — Critical Bugs Fixed, Hardening Complete (2026-02-09)

@@ -64,6 +64,21 @@ export async function executeAction(
           JSON.stringify({ ...evaluation.metadata, shadow_mode: true }),
         ]
       );
+      // Audit log for shadow mode (critical for observability)
+      await query(
+        `INSERT INTO audit_logs (id, actor, actor_type, action, entity_type, entity_id, details)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          generateId(), 'system', 'enforcement_engine', `enforcement.shadow.${evaluation.action}`,
+          'user', userId,
+          JSON.stringify({
+            action_id: actionId,
+            reason_code: evaluation.reasonCode,
+            shadow_mode: true,
+            automated: true,
+          }),
+        ]
+      );
     } catch (err) {
       console.error('[Enforcement] Failed to persist shadow action:', err);
     }
