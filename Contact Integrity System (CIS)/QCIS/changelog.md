@@ -163,3 +163,52 @@
 | `project_status.md` | Phase, infra status, blockers, lessons |
 
 ---
+
+## 2026-02-09 — Backend Deployed to Hostinger VPS
+
+**Phase:** BUILD (production deployment)
+**Agent:** Master Claude
+
+### Changes
+
+- **Node.js 20.20.0 installed on VPS** via NodeSource (npm 10.8.2)
+- **PM2 6.0.14 installed** — process manager with systemd auto-start
+- **Nginx 1.24.0 installed** — reverse proxy on port 80 → backend port 3001
+- **Repository cloned** to `/opt/qcis-repo`, symlinked to `/opt/qcis-backend`
+- **TypeScript compiled** — `dist/index.js` + 9 SQL migration files copied
+- **Two build fixes applied:**
+  - `auth.ts`: `expiresIn` type assertion for `@types/jsonwebtoken` StringValue compatibility
+  - `signals.ts`: Nullish coalescing for possibly undefined `messageCount`
+- **Production `.env` created** at `/opt/qcis-backend/.env` (chmod 600)
+  - `NODE_ENV=production`, `DB_HOST=localhost`, `DB_SSL=false`
+  - JWT and HMAC secrets generated via `openssl rand -hex 32`
+  - `SHADOW_MODE=true` (enforcement disabled)
+- **Migration verification** — all 9 migrations skipped (already applied), confirms DB connectivity
+- **PM2 process started** — `qcis-backend` online, cluster mode, ~64MB RAM
+- **PM2 auto-start configured** — `pm2 startup systemd` + `pm2 save`
+- **Nginx reverse proxy configured** at `/etc/nginx/sites-available/qcis`
+  - `/api/*` → proxy to `127.0.0.1:3001`
+  - `/` → JSON status response (no frontend yet)
+
+### Verification Evidence
+
+| Check | Result |
+|---|---|
+| `node --version` | v20.20.0 |
+| `pm2 status` | qcis-backend online, 0 restarts |
+| `curl http://72.60.68.137/api/health` | 200 `{"status":"healthy","database":"connected"}` |
+| `curl http://72.60.68.137/api/users` | 401 `{"error":"Missing or invalid authorization header"}` |
+| PM2 startup | systemd service `pm2-root` enabled |
+| PM2 logs | No errors, all 3 event consumers registered |
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `src/backend/src/api/middleware/auth.ts` | Type fix: `expiresIn` cast to `jwt.SignOptions["expiresIn"]` |
+| `src/backend/src/detection/signals.ts` | Null fix: `(context?.conversationPattern.messageCount ?? 0) > 10` |
+| `plugins_mcp.md` | Added Application Deployment section |
+| `changelog.md` | This entry |
+| `project_status.md` | Deployment status, next steps updated |
+
+---

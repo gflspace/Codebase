@@ -112,7 +112,7 @@ export function generateSignals(
   if (context?.conversationPattern.hasEscalation) {
     patternFlags.push('ESCALATION_PATTERN');
   }
-  if (context?.conversationPattern.messageCount > 10) {
+  if ((context?.conversationPattern.messageCount ?? 0) > 10) {
     patternFlags.push('HIGH_VOLUME_CONVERSATION');
   }
 

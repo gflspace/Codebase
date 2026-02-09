@@ -74,6 +74,27 @@ DB_HOST=72.60.68.137 DB_PORT=5432 DB_NAME=qwick_cis DB_USER=qwick_cis_app DB_PAS
 sudo -u postgres psql -d qwick_cis
 ```
 
+### Application Deployment
+
+| Key | Value | Status |
+|---|---|---|
+| Node.js | v20.20.0 (NodeSource) | Verified |
+| npm | 10.8.2 | Verified |
+| PM2 | 6.0.14 | Verified |
+| Nginx | 1.24.0 (Ubuntu) | Verified |
+| Repo Path | `/opt/qcis-repo` (git clone) | Verified |
+| App Symlink | `/opt/qcis-backend` → repo backend dir | Verified |
+| Built Output | `/opt/qcis-backend/dist/index.js` | Verified |
+| PM2 Process | `qcis-backend` (cluster mode) | Online |
+| PM2 Startup | systemd (`pm2-root.service`) | Enabled |
+| PM2 Logs | `/var/log/qcis/out.log`, `/var/log/qcis/error.log` | Active |
+| Ecosystem Config | `/opt/qcis-backend/ecosystem.config.js` | Created |
+| .env Path | `/opt/qcis-backend/.env` (chmod 600) | Created |
+| Nginx Config | `/etc/nginx/sites-available/qcis` | Enabled |
+| Public URL | `http://72.60.68.137` | Live |
+| Health Check | `http://72.60.68.137/api/health` | 200 OK |
+| App Port | 3001 (proxied via Nginx port 80) | Verified |
+
 ### Firewall (UFW)
 
 | Rule | Port | Status |
@@ -157,4 +178,4 @@ All credential changes must be logged in `changelog.md`.
 
 ---
 
-**Status:** Infrastructure Live — VPS, PostgreSQL, Backend Verified (2026-02-09)
+**Status:** Deployed — VPS, PostgreSQL, Backend API live at http://72.60.68.137 (2026-02-09)

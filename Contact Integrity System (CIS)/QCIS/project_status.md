@@ -5,7 +5,7 @@
 
 ---
 
-## Current Phase: BUILD (infrastructure live, E2E pipeline verified)
+## Current Phase: BUILD (backend deployed to production)
 
 ### Phase Progress
 
@@ -13,7 +13,7 @@
 |---|---|---|
 | PLAN | Complete | 6/6 documents finalized |
 | SETUP | Complete | 4/4 documents finalized |
-| BUILD | In Progress | Backend code (94/94 tests), VPS live, DB provisioned, 9/9 migrations, E2E verified |
+| BUILD | In Progress | Backend deployed to VPS, API live at http://72.60.68.137, DB connected, 9/9 migrations, E2E verified |
 
 ---
 
@@ -56,7 +56,7 @@
 | `architecture.md` | Synthesized — active |
 | `changelog.md` | Updated 2026-02-09 — active |
 | `project_status.md` | This file — active |
-| `plugins_mcp.md` | Infrastructure live — VPS + DB verified |
+| `plugins_mcp.md` | Deployed — VPS, DB, backend API live |
 
 ### Supporting Documents
 
@@ -78,7 +78,10 @@
 | SSH Access | Port 22 | Live | ed25519 key auth, no passphrase |
 | PostgreSQL 15 | VPS port 5432 | Live | DB `qwick_cis`, 14 tables, 9/9 migrations |
 | UFW Firewall | VPS | Active | SSH, PG 5432, HTTP 80, HTTPS 443 |
-| Backend API | localhost:3001 | Tested | Health OK, DB connected, 3 event consumers |
+| Backend API | `http://72.60.68.137/api` (Nginx → :3001) | **Deployed** | Health OK, DB connected, PM2 managed |
+| Node.js | VPS | Live | v20.20.0 (NodeSource) |
+| PM2 | VPS | Live | v6.0.14, systemd auto-start enabled |
+| Nginx | VPS port 80 | Live | v1.24.0, reverse proxy to :3001 |
 | Hostinger API | `developers.hostinger.com` | Active | Token in `claude_Hostinger_MCP.json` |
 
 ## Database Tables (14)
@@ -119,11 +122,12 @@
 3. ~~**Enable remote DB access**~~ — pg_hba.conf + UFW configured (2026-02-09)
 4. ~~**Run database migrations**~~ — 9/9 migrations applied (2026-02-09)
 5. ~~**Start backend & test E2E pipeline**~~ — Full pipeline verified: event → signals → score → enforcement → audit (2026-02-09)
-6. **Build event emission layer** — Sidebase domain event pipeline
-7. **Deploy detection orchestrator** — Claude Code integration via API contract
-8. **Build admin dashboard** — React/Next.js with RBAC
-9. **Run simulation/testing** — Playwright + pre-production evaluation
-10. **Shadow deployment** — Monitor-only mode before active enforcement
+6. ~~**Deploy backend to VPS**~~ — Node.js + PM2 + Nginx, API live at http://72.60.68.137 (2026-02-09)
+7. **Build event emission layer** — Sidebase domain event pipeline
+8. **Deploy detection orchestrator** — Claude Code integration via API contract
+9. **Build admin dashboard** — React/Next.js with RBAC
+10. **Run simulation/testing** — Playwright + pre-production evaluation
+11. **Shadow deployment** — Monitor-only mode before active enforcement
 
 ---
 
@@ -145,7 +149,9 @@
 - (2026-02-09) `config.ts` had incorrect dotenv path (`../../.env` instead of `../.env`). Fixed before migrations could run. Always verify path resolution when using relative paths.
 - (2026-02-09) Foreign key constraint on `risk_signals.user_id → users.id` means test events must use real user UUIDs from the `users` table. Created test users first, then ran detection.
 - (2026-02-09) E2E pipeline fully validated: event ingestion → detection (8 signals) → scoring (34.80, low tier) → enforcement (soft_warning) → audit (2 entries). All layers operate independently as designed.
+- (2026-02-09) Deployment required two TypeScript build fixes: `@types/jsonwebtoken` StringValue type and optional chaining null safety. Both fixed locally and on VPS.
+- (2026-02-09) DB connection from VPS uses `localhost` with `DB_SSL=false` (no SSL needed for same-machine connection). pg_hba.conf `host` rule for `127.0.0.1/32` with `scram-sha-256` handles auth.
 
 ---
 
-**Factory Status:** BUILD Phase Active — Infrastructure Live, E2E Pipeline Verified (2026-02-09)
+**Factory Status:** BUILD Phase Active — Backend Deployed to Production (2026-02-09)
