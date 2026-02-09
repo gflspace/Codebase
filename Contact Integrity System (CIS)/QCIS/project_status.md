@@ -5,7 +5,7 @@
 
 ---
 
-## Current Phase: BUILD (hardening — critical bugs fixed)
+## Current Phase: BUILD (dashboard deployed, hardening complete)
 
 ### Phase Progress
 
@@ -13,7 +13,7 @@
 |---|---|---|
 | PLAN | Complete | 6/6 documents finalized |
 | SETUP | Complete | 4/4 documents finalized |
-| BUILD | In Progress | Backend deployed to VPS, API live at https://cis.qwickservices.com (SSL), DB connected, 9/9 migrations, E2E verified, critical bugs fixed |
+| BUILD | In Progress | Backend + Dashboard deployed to VPS, live at https://cis.qwickservices.com (SSL), DB connected, 9/9 migrations, E2E verified, critical bugs fixed, 7-module dashboard live |
 
 ---
 
@@ -79,6 +79,7 @@
 | PostgreSQL 15 | VPS port 5432 | Live | DB `qwick_cis`, 14 tables, 9/9 migrations |
 | UFW Firewall | VPS | Active | SSH, PG 5432, HTTP 80, HTTPS 443 |
 | Backend API | `https://cis.qwickservices.com/api` (Nginx SSL → :3001) | **Deployed** | Health OK, DB connected, PM2 managed |
+| Admin Dashboard | `https://cis.qwickservices.com/` (Nginx static) | **Deployed** | Next.js static export, 7 modules, RBAC |
 | SSL/TLS | Let's Encrypt (Certbot 2.9.0) | **Live** | `cis.qwickservices.com`, expires 2026-05-10, auto-renew active |
 | Node.js | VPS | Live | v20.20.0 (NodeSource) |
 | PM2 | VPS | Live | v6.0.14, systemd auto-start enabled |
@@ -129,7 +130,7 @@
 9. ~~**Critical bug fixes & hardening**~~ — 6 issues fixed: appeal user status restore, appeals auth, shadow audit logs, event bus dedup persistence, bcrypt password hashing, production secret enforcement (2026-02-09)
 10. **Build event emission layer** — Sidebase domain event pipeline
 11. **Deploy detection orchestrator** — Claude Code integration via API contract
-12. **Build admin dashboard** — React/Next.js with RBAC
+12. ~~**Build admin dashboard**~~ — Next.js static export with RBAC, 7 modules, deployed to VPS (2026-02-09)
 13. **Run simulation/testing** — Playwright + pre-production evaluation
 14. **Shadow deployment** — Monitor-only mode before active enforcement
 
@@ -161,7 +162,9 @@
 - (2026-02-09) Shell escaping across SSH + bash layers corrupts special characters in JSON payloads. Use Python or temp files to construct JSON on the remote server to avoid `\!` and similar issues.
 - (2026-02-09) CIS Readiness Assessment scored 38/100 with 15 issues across 7 layers. Critical bugs: appeal reversal not restoring user status, unauthenticated appeals endpoint, shadow mode missing audit logs, in-memory-only event dedup. All 6 highest-priority issues fixed in one pass.
 - (2026-02-09) SHA256 password hashing is inadequate for production. Migrated to bcrypt with automatic legacy migration — existing SHA256 hashes are upgraded to bcrypt on next successful login. No manual password resets needed.
+- (2026-02-09) Dashboard deployed as Next.js static export served by Nginx. Same-origin deployment (dashboard + API on same domain) eliminates CORS complexity — use relative `/api` URLs instead of absolute URLs with CORS headers.
+- (2026-02-09) `requiredInProduction()` config guard caused 502 on deploy when VPS `.env` had empty `JWT_SECRET=` / `HMAC_SECRET=`. Secrets must be generated on-server (used Python `secrets.token_hex(32)`). Shell variable expansion across SSH layers is unreliable — generate values directly on the target machine.
 
 ---
 
-**Factory Status:** BUILD Phase Active — Critical Bugs Fixed, Hardening Complete (2026-02-09)
+**Factory Status:** BUILD Phase Active — Dashboard Deployed, Hardening Complete (2026-02-09)

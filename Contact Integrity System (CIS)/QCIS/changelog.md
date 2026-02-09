@@ -401,3 +401,67 @@
 | `project_status.md` | Updated |
 
 ---
+
+## 2026-02-09 — Admin Dashboard Deployed to Production
+
+**Phase:** BUILD (dashboard deployment)
+**Agent:** Master Claude
+
+### Changes
+
+- **Next.js dashboard configured for static export** (`next.config.js`)
+  - Added `output: 'export'` and `trailingSlash: true` for Nginx-compatible static hosting
+  - Dashboard builds to `src/dashboard/out/` as pure HTML/CSS/JS
+
+- **Dashboard API client updated for same-origin deployment** (`api.ts`)
+  - Changed default `API_BASE` from `http://localhost:3001/api` to `/api` (relative URL)
+  - Eliminates CORS issues — dashboard and API share `cis.qwickservices.com`
+
+- **Backend CORS updated** (`index.ts`)
+  - Added both `config.dashboardUrl` and `config.apiBaseUrl` to allowed origins
+  - Supports both same-origin and cross-origin access patterns
+
+- **Dashboard built and deployed on VPS**
+  - `npm install` + `npm run build` in `/opt/qcis-repo/src/dashboard`
+  - Symlink: `/opt/qcis-dashboard` → `/opt/qcis-repo/src/dashboard/out`
+  - Static files served by Nginx at `/`
+
+- **Nginx reconfigured for dashboard + API coexistence**
+  - `location /` → serves static dashboard files (`/opt/qcis-dashboard`)
+  - `location /api/` → reverse proxy to backend on port 3001
+  - `location /_next/static/` → cached with 365d expiry for performance
+  - `try_files` with `$uri.html` fallback for Next.js trailing slash routes
+
+### Dashboard Modules (7)
+
+| Module | Route | Access Roles |
+|---|---|---|
+| Alerts Inbox | `/alerts` | trust_safety, ops |
+| Case Investigation | `/cases` | trust_safety |
+| Enforcement Management | `/enforcement` | trust_safety, ops |
+| Risk Trends | `/risk` | trust_safety, ops, legal_compliance |
+| Appeals | `/appeals` | trust_safety, legal_compliance |
+| System Health | `/system` | ops |
+| Audit Logs | `/audit` | trust_safety, legal_compliance |
+
+### Verification Evidence
+
+| Check | Result |
+|---|---|
+| `curl -s -o /dev/null -w "%{http_code}" https://cis.qwickservices.com/` | 200 (dashboard HTML) |
+| `curl https://cis.qwickservices.com/api/health` | 200 `{"status":"healthy","database":"connected"}` |
+| Login test (`POST /api/auth/login`) | JWT token issued, bcrypt auto-migration confirmed |
+| CSS assets (`/_next/static/css/`) | 200, served with cache headers |
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `src/dashboard/next.config.js` | Added `output: 'export'`, `trailingSlash: true` |
+| `src/dashboard/src/lib/api.ts` | Default API_BASE → `/api` (relative) |
+| `src/backend/src/index.ts` | CORS: added `apiBaseUrl` origin |
+| `/etc/nginx/sites-available/qcis` | Dashboard static files + API proxy + asset caching |
+| `changelog.md` | This entry |
+| `project_status.md` | Dashboard marked as deployed |
+
+---
