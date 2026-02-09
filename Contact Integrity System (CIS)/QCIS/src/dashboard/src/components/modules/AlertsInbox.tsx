@@ -28,20 +28,29 @@ export default function AlertsInbox() {
   const [filter, setFilter] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
+  const [debugMsg, setDebugMsg] = useState('Waiting for auth...');
+
   useEffect(() => {
+    setDebugMsg(`useEffect fired: token=${auth.token ? 'YES' : 'NO'}, filter=${filter || 'all'}`);
     loadAlerts();
   }, [filter, auth.token]);
 
   async function loadAlerts() {
-    if (!auth.token) return;
+    if (!auth.token) {
+      setDebugMsg('loadAlerts: no token, skipping');
+      return;
+    }
     setLoading(true);
+    setDebugMsg('loadAlerts: fetching...');
     try {
       const params: Record<string, string> = {};
       if (filter) params.status = filter;
       const result = await api.getAlerts(auth.token, params);
       setAlerts(result.data as Alert[]);
+      setDebugMsg(`loadAlerts: got ${(result.data as Alert[]).length} alerts`);
     } catch (err) {
       console.error('Failed to load alerts:', err);
+      setDebugMsg(`loadAlerts ERROR: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoading(false);
     }
@@ -72,6 +81,9 @@ export default function AlertsInbox() {
 
   return (
     <div>
+      <div style={{ background: '#111', color: '#0f0', fontFamily: 'monospace', fontSize: '11px', padding: '6px 10px', borderRadius: '4px', marginBottom: '8px' }}>
+        ALERTS DEBUG: {debugMsg}
+      </div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-gray-900">Alerts & Inbox</h2>
         <div className="flex gap-2">

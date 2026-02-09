@@ -10,17 +10,24 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [debugMsg, setDebugMsg] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
+    setDebugMsg('Submitting login...');
 
     try {
+      setDebugMsg('Calling API...');
       const result = await api.login(email, password);
+      setDebugMsg(`API returned: token=${result.token ? 'YES' : 'NO'}, user=${result.user?.email || 'NONE'}`);
       login(result.token, result.user as any);
+      setDebugMsg('login() called - auth state should update now');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      const msg = err instanceof Error ? err.message : 'Login failed';
+      setError(msg);
+      setDebugMsg(`ERROR: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -73,6 +80,12 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+
+        {debugMsg && (
+          <div style={{ marginTop: '16px', padding: '8px', background: '#111', color: '#0f0', fontFamily: 'monospace', fontSize: '11px', borderRadius: '4px' }}>
+            DEBUG: {debugMsg}
+          </div>
+        )}
       </div>
     </div>
   );
