@@ -25,7 +25,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 export default function AlertsInbox() {
   const { auth } = useAuth();
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [filter, setFilter] = useState<string>('open');
+  const [filter, setFilter] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -75,7 +75,7 @@ export default function AlertsInbox() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-gray-900">Alerts & Inbox</h2>
         <div className="flex gap-2">
-          {['open', 'assigned', 'in_progress', 'resolved', 'dismissed'].map((s) => (
+          {['', 'open', 'assigned', 'in_progress', 'resolved', 'dismissed'].map((s) => (
             <button
               key={s}
               onClick={() => setFilter(s)}
@@ -83,7 +83,7 @@ export default function AlertsInbox() {
                 filter === s ? 'bg-cis-green text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              {s.replace('_', ' ')}
+              {s ? s.replace('_', ' ') : 'all'}
             </button>
           ))}
         </div>
