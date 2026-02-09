@@ -13,7 +13,7 @@
 |---|---|---|
 | PLAN | Complete | 6/6 documents finalized |
 | SETUP | Complete | 4/4 documents finalized |
-| BUILD | In Progress | Backend deployed to VPS, API live at http://72.60.68.137, DB connected, 9/9 migrations, E2E verified |
+| BUILD | In Progress | Backend deployed to VPS, API live at https://cis.qwickservices.com (SSL), DB connected, 9/9 migrations, E2E verified |
 
 ---
 
@@ -78,10 +78,11 @@
 | SSH Access | Port 22 | Live | ed25519 key auth, no passphrase |
 | PostgreSQL 15 | VPS port 5432 | Live | DB `qwick_cis`, 14 tables, 9/9 migrations |
 | UFW Firewall | VPS | Active | SSH, PG 5432, HTTP 80, HTTPS 443 |
-| Backend API | `http://72.60.68.137/api` (Nginx → :3001) | **Deployed** | Health OK, DB connected, PM2 managed |
+| Backend API | `https://cis.qwickservices.com/api` (Nginx SSL → :3001) | **Deployed** | Health OK, DB connected, PM2 managed |
+| SSL/TLS | Let's Encrypt (Certbot 2.9.0) | **Live** | `cis.qwickservices.com`, expires 2026-05-10, auto-renew active |
 | Node.js | VPS | Live | v20.20.0 (NodeSource) |
 | PM2 | VPS | Live | v6.0.14, systemd auto-start enabled |
-| Nginx | VPS port 80 | Live | v1.24.0, reverse proxy to :3001 |
+| Nginx | VPS ports 80+443 | Live | v1.24.0, SSL termination + HTTP→HTTPS redirect |
 | Hostinger API | `developers.hostinger.com` | Active | Token in `claude_Hostinger_MCP.json` |
 
 ## Database Tables (14)
@@ -123,11 +124,12 @@
 4. ~~**Run database migrations**~~ — 9/9 migrations applied (2026-02-09)
 5. ~~**Start backend & test E2E pipeline**~~ — Full pipeline verified: event → signals → score → enforcement → audit (2026-02-09)
 6. ~~**Deploy backend to VPS**~~ — Node.js + PM2 + Nginx, API live at http://72.60.68.137 (2026-02-09)
-7. **Build event emission layer** — Sidebase domain event pipeline
-8. **Deploy detection orchestrator** — Claude Code integration via API contract
-9. **Build admin dashboard** — React/Next.js with RBAC
-10. **Run simulation/testing** — Playwright + pre-production evaluation
-11. **Shadow deployment** — Monitor-only mode before active enforcement
+7. ~~**Enable HTTPS (SSL)**~~ — Let's Encrypt cert for `cis.qwickservices.com`, auto-renewal, HTTP redirect (2026-02-09)
+8. **Build event emission layer** — Sidebase domain event pipeline
+9. **Deploy detection orchestrator** — Claude Code integration via API contract
+10. **Build admin dashboard** — React/Next.js with RBAC
+11. **Run simulation/testing** — Playwright + pre-production evaluation
+12. **Shadow deployment** — Monitor-only mode before active enforcement
 
 ---
 
@@ -151,7 +153,8 @@
 - (2026-02-09) E2E pipeline fully validated: event ingestion → detection (8 signals) → scoring (34.80, low tier) → enforcement (soft_warning) → audit (2 entries). All layers operate independently as designed.
 - (2026-02-09) Deployment required two TypeScript build fixes: `@types/jsonwebtoken` StringValue type and optional chaining null safety. Both fixed locally and on VPS.
 - (2026-02-09) DB connection from VPS uses `localhost` with `DB_SSL=false` (no SSL needed for same-machine connection). pg_hba.conf `host` rule for `127.0.0.1/32` with `scram-sha-256` handles auth.
+- (2026-02-09) SSL setup was straightforward: DNS A record at GoDaddy, Certbot `--nginx` plugin auto-configured Nginx with SSL + redirect. No manual Nginx SSL config needed.
 
 ---
 
-**Factory Status:** BUILD Phase Active — Backend Deployed to Production (2026-02-09)
+**Factory Status:** BUILD Phase Active — Backend Deployed to Production with SSL (2026-02-09)

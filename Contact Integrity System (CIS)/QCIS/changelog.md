@@ -212,3 +212,47 @@
 | `project_status.md` | Deployment status, next steps updated |
 
 ---
+
+## 2026-02-09 — SSL Enabled via Let's Encrypt for cis.qwickservices.com
+
+**Phase:** BUILD (HTTPS deployment)
+**Agent:** Master Claude
+
+### Changes
+
+- **DNS A record created** at GoDaddy for `cis.qwickservices.com` → `72.60.68.137` (TTL 600)
+- **Nginx `server_name` updated** — added `cis.qwickservices.com` alongside IP
+- **Certbot 2.9.0 installed** with `python3-certbot-nginx` plugin
+- **SSL certificate obtained** from Let's Encrypt for `cis.qwickservices.com`
+  - Certificate: `/etc/letsencrypt/live/cis.qwickservices.com/fullchain.pem`
+  - Private key: `/etc/letsencrypt/live/cis.qwickservices.com/privkey.pem`
+  - Expires: 2026-05-10 (auto-renewal enabled via systemd timer)
+- **Nginx auto-configured by Certbot:**
+  - Port 443 with SSL termination
+  - Port 80 HTTP→HTTPS 301 redirect
+- **Auto-renewal verified** — `certbot renew --dry-run` passed
+- **`.env` updated** on VPS:
+  - `DASHBOARD_URL=https://cis.qwickservices.com`
+  - `API_BASE_URL=https://cis.qwickservices.com`
+- **PM2 restarted** with `--update-env` to pick up new environment variables
+
+### Verification Evidence
+
+| Check | Result |
+|---|---|
+| `nslookup cis.qwickservices.com` | `72.60.68.137` |
+| `curl https://cis.qwickservices.com/api/health` | 200 `{"status":"healthy","database":"connected"}` |
+| `curl -I http://cis.qwickservices.com/api/health` | 301 → `https://cis.qwickservices.com/api/health` |
+| `certbot renew --dry-run` | All simulated renewals succeeded |
+
+### Files Modified
+
+| File | Change |
+|---|---|
+| `/etc/nginx/sites-available/qcis` | `server_name` + Certbot SSL config (443 + redirect) |
+| `/opt/qcis-backend/.env` | `DASHBOARD_URL` and `API_BASE_URL` → HTTPS |
+| `plugins_mcp.md` | SSL section, domain, URLs updated |
+| `changelog.md` | This entry |
+| `project_status.md` | Infrastructure table, next steps |
+
+---

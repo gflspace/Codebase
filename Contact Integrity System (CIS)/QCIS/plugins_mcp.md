@@ -90,10 +90,10 @@ sudo -u postgres psql -d qwick_cis
 | PM2 Logs | `/var/log/qcis/out.log`, `/var/log/qcis/error.log` | Active |
 | Ecosystem Config | `/opt/qcis-backend/ecosystem.config.js` | Created |
 | .env Path | `/opt/qcis-backend/.env` (chmod 600) | Created |
-| Nginx Config | `/etc/nginx/sites-available/qcis` | Enabled |
-| Public URL | `http://72.60.68.137` | Live |
-| Health Check | `http://72.60.68.137/api/health` | 200 OK |
-| App Port | 3001 (proxied via Nginx port 80) | Verified |
+| Nginx Config | `/etc/nginx/sites-available/qcis` | Enabled (SSL by Certbot) |
+| Public URL | `https://cis.qwickservices.com` | Live |
+| Health Check | `https://cis.qwickservices.com/api/health` | 200 OK |
+| App Port | 3001 (proxied via Nginx 443 SSL + 80→HTTPS redirect) | Verified |
 
 ### Firewall (UFW)
 
@@ -131,10 +131,15 @@ sudo -u postgres psql -d qwick_cis
 
 | Key | Value | Status |
 |---|---|---|
-| Provider | Let's Encrypt (Certbot) | Defined |
-| Domain | `cis-prod.qwickservices.com` | Placeholder |
-| Admin Domain | `admin.qwickservices.com` | Placeholder |
-| Auto-Renew | Enabled | Planned |
+| Provider | Let's Encrypt (Certbot 2.9.0) | Active |
+| Domain | `cis.qwickservices.com` | Live |
+| Certificate Path | `/etc/letsencrypt/live/cis.qwickservices.com/fullchain.pem` | Active |
+| Private Key Path | `/etc/letsencrypt/live/cis.qwickservices.com/privkey.pem` | Active |
+| Expires | 2026-05-10 | Auto-renews |
+| Auto-Renew | systemd timer (certbot.timer, every 12h check) | Active |
+| HTTP→HTTPS Redirect | 301 on port 80 (managed by Certbot) | Active |
+| DNS Provider | GoDaddy (`ns43/ns44.domaincontrol.com`) | A record active |
+| DNS Record | `cis` A → `72.60.68.137` (TTL 600) | Verified |
 
 ---
 
@@ -178,4 +183,4 @@ All credential changes must be logged in `changelog.md`.
 
 ---
 
-**Status:** Deployed — VPS, PostgreSQL, Backend API live at http://72.60.68.137 (2026-02-09)
+**Status:** Deployed — VPS, PostgreSQL, Backend API live at https://cis.qwickservices.com (SSL active, 2026-02-09)
