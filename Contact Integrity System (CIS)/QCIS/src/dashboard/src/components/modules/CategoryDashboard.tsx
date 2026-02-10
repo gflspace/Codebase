@@ -4,11 +4,6 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import * as api from '@/lib/api';
 
-const SERVICE_CATEGORIES = [
-  'All', 'Cleaning', 'Plumbing', 'Electrical', 'Moving', 'Tutoring',
-  'Handyman', 'Landscaping', 'Pet Care', 'Auto Repair', 'Personal Training',
-];
-
 interface CategoryStat {
   category: string;
   alert_count: string;
@@ -28,9 +23,12 @@ interface UserRow {
   status: string;
 }
 
-export default function CategoryDashboard() {
+interface CategoryDashboardProps {
+  activeCategory: string;
+}
+
+export default function CategoryDashboard({ activeCategory }: CategoryDashboardProps) {
   const { auth } = useAuth();
-  const [activeCategory, setActiveCategory] = useState('All');
   const [categoryStats, setCategoryStats] = useState<CategoryStat[]>([]);
   const [providers, setProviders] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,24 +74,12 @@ export default function CategoryDashboard() {
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-gray-900 mb-4">Service Categories</h2>
-
-      {/* Category Tabs */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        {SERVICE_CATEGORIES.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setActiveCategory(cat)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              activeCategory === cat
-                ? 'bg-cis-green text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
+      <h2 className="text-xl font-bold text-gray-900 mb-4">
+        Service Categories
+        {activeCategory !== 'All' && (
+          <span className="ml-2 text-sm font-normal text-cis-green">{activeCategory}</span>
+        )}
+      </h2>
 
       {/* Category Metrics */}
       <div className="grid grid-cols-4 gap-4 mb-6">
