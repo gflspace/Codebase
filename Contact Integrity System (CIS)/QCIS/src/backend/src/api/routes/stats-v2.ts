@@ -354,7 +354,8 @@ router.get(
         enforcement_actions: number;
       }>();
 
-      const ensure = (ts: string) => {
+      const ensure = (rawTs: string | Date) => {
+        const ts = rawTs instanceof Date ? rawTs.toISOString() : String(rawTs);
         if (!timeMap.has(ts)) {
           timeMap.set(ts, {
             timestamp: ts,
