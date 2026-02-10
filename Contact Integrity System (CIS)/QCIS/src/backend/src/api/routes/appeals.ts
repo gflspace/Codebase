@@ -4,6 +4,7 @@ import { authenticateJWT, requireRole } from '../middleware/auth';
 import { validate, validateQuery, validateParams } from '../middleware/validation';
 import { createAppealSchema, resolveAppealSchema, uuidParam, appealQuerySchema } from '../schemas';
 import { generateId } from '../../shared/utils';
+import { emitAppealSubmitted, emitAppealResolved } from '../../events/emit';
 
 const router = Router();
 
@@ -101,7 +102,16 @@ router.post(
         [id, enforcement_action_id, user_id, reason]
       );
 
-      res.status(201).json({ data: result.rows[0] });
+      const row = result.rows[0];
+      res.status(201).json({ data: row });
+
+      // Fire-and-forget: emit domain event to event bus
+      emitAppealSubmitted({
+        id: row.id,
+        enforcement_action_id: row.enforcement_action_id,
+        user_id: row.user_id,
+        reason: row.reason,
+      });
     } catch (error) {
       console.error('Create appeal error:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -187,6 +197,15 @@ router.post(
       }
 
       res.json({ data: result });
+
+      // Fire-and-forget: emit domain event to event bus
+      emitAppealResolved({
+        id: result.id,
+        enforcement_action_id: result.enforcement_action_id,
+        user_id: result.user_id,
+        status: result.status,
+        resolution_notes: result.resolution_notes,
+      });
     } catch (error) {
       console.error('Resolve appeal error:', error);
       res.status(500).json({ error: 'Internal server error' });

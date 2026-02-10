@@ -4,6 +4,7 @@ import { authenticateJWT, requireRole } from '../middleware/auth';
 import { validate, validateQuery, validateParams } from '../middleware/validation';
 import { createUserSchema, updateUserSchema, uuidParam, userQuerySchema } from '../schemas';
 import { generateId } from '../../shared/utils';
+import { emitUserStatusChanged } from '../../events/emit';
 
 const router = Router();
 
@@ -139,6 +140,15 @@ router.patch(
         return;
       }
 
+      // If status is being changed, fetch the previous status for the event
+      let previousStatus: string | undefined;
+      if (req.body.status) {
+        const prev = await query('SELECT status FROM users WHERE id = $1', [req.params.id]);
+        if (prev.rows.length > 0) {
+          previousStatus = prev.rows[0].status;
+        }
+      }
+
       values.push(req.params.id);
       const result = await query(
         `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex}
@@ -151,7 +161,18 @@ router.patch(
         return;
       }
 
-      res.json({ data: result.rows[0] });
+      const row = result.rows[0];
+      res.json({ data: row });
+
+      // Fire-and-forget: emit status change event if status actually changed
+      if (req.body.status && previousStatus && previousStatus !== row.status) {
+        emitUserStatusChanged({
+          id: row.id,
+          previous_status: previousStatus,
+          new_status: row.status,
+          reason: req.body.reason,
+        });
+      }
     } catch (error) {
       console.error('Update user error:', error);
       res.status(500).json({ error: 'Internal server error' });

@@ -4,6 +4,7 @@ import { authenticateJWT, requireRole } from '../middleware/auth';
 import { validate, validateQuery, validateParams } from '../middleware/validation';
 import { createTransactionSchema, updateTransactionSchema, uuidParam, paginationQuery } from '../schemas';
 import { generateId } from '../../shared/utils';
+import { emitTransactionInitiated, emitTransactionStatusChanged } from '../../events/emit';
 
 const router = Router();
 
@@ -105,7 +106,19 @@ router.post(
         [id, user_id, counterparty_id || null, amount, currency || 'USD', payment_method || null, external_ref || null, JSON.stringify(metadata || {})]
       );
 
-      res.status(201).json({ data: result.rows[0] });
+      const row = result.rows[0];
+      res.status(201).json({ data: row });
+
+      // Fire-and-forget: emit domain event to event bus
+      emitTransactionInitiated({
+        id: row.id,
+        user_id: row.user_id,
+        counterparty_id: row.counterparty_id,
+        amount: row.amount,
+        currency: row.currency,
+        payment_method: row.payment_method,
+        status: row.status,
+      });
     } catch (error) {
       console.error('Create transaction error:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -132,7 +145,19 @@ router.patch(
         return;
       }
 
-      res.json({ data: result.rows[0] });
+      const row = result.rows[0];
+      res.json({ data: row });
+
+      // Fire-and-forget: emit domain event to event bus
+      emitTransactionStatusChanged({
+        id: row.id,
+        user_id: row.user_id,
+        counterparty_id: row.counterparty_id,
+        amount: row.amount,
+        currency: row.currency,
+        payment_method: row.payment_method,
+        status: row.status,
+      });
     } catch (error) {
       console.error('Update transaction error:', error);
       res.status(500).json({ error: 'Internal server error' });

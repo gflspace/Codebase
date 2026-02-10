@@ -3,6 +3,7 @@ import { query } from '../../database/connection';
 import { authenticateJWT, requireRole } from '../middleware/auth';
 import { validateQuery, validateParams } from '../middleware/validation';
 import { enforcementQuerySchema, uuidParam } from '../schemas';
+import { emitEnforcementReversed } from '../../events/emit';
 
 const router = Router();
 
@@ -123,7 +124,16 @@ router.post(
         return;
       }
 
-      res.json({ data: result.rows[0] });
+      const row = result.rows[0];
+      res.json({ data: row });
+
+      // Fire-and-forget: emit domain event to event bus
+      emitEnforcementReversed({
+        id: row.id,
+        user_id: row.user_id,
+        action_type: row.action_type,
+        reversal_reason: row.reversal_reason,
+      });
     } catch (error) {
       console.error('Reverse enforcement action error:', error);
       res.status(500).json({ error: 'Internal server error' });

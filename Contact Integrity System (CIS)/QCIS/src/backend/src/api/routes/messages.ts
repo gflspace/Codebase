@@ -4,6 +4,7 @@ import { authenticateJWT, requireRole } from '../middleware/auth';
 import { validate, validateQuery, validateParams } from '../middleware/validation';
 import { createMessageSchema, messageQuerySchema, uuidParam } from '../schemas';
 import { generateId } from '../../shared/utils';
+import { emitMessageCreated } from '../../events/emit';
 
 const router = Router();
 
@@ -106,7 +107,18 @@ router.post(
         [id, sender_id, receiver_id, conversation_id || null, content, JSON.stringify(metadata || {})]
       );
 
-      res.status(201).json({ data: result.rows[0] });
+      const row = result.rows[0];
+      res.status(201).json({ data: row });
+
+      // Fire-and-forget: emit domain event to event bus
+      emitMessageCreated({
+        id: row.id,
+        sender_id: row.sender_id,
+        receiver_id: row.receiver_id,
+        conversation_id: row.conversation_id,
+        content: row.content,
+        metadata: row.metadata,
+      });
     } catch (error) {
       console.error('Create message error:', error);
       res.status(500).json({ error: 'Internal server error' });
