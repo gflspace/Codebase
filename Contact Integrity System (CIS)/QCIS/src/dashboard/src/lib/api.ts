@@ -26,6 +26,12 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
   });
 
   if (!res.ok) {
+    // Auto-logout on 401 (expired/invalid token)
+    if (res.status === 401 && token) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cis-auth-expired'));
+      }
+    }
     const error = await res.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(error.error || `HTTP ${res.status}`);
   }
