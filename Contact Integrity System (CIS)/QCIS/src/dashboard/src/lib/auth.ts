@@ -35,16 +35,19 @@ export function useAuth() {
 export function hasAccess(role: string, module: string): boolean {
   const ACCESS_MATRIX: Record<string, Record<string, boolean>> = {
     trust_safety: {
+      intelligence: true,
       overview: true, category: true,
       alerts: true, cases: true, enforcement: true, risk_trends: true,
       appeals: true, system_health: true, audit_logs: true,
     },
     ops: {
+      intelligence: true,
       overview: true, category: true,
       alerts: true, cases: false, enforcement: false, risk_trends: true,
       appeals: false, system_health: true, audit_logs: false,
     },
     legal_compliance: {
+      intelligence: true,
       overview: true, category: true,
       alerts: true, cases: true, enforcement: true, risk_trends: true,
       appeals: true, system_health: false, audit_logs: true,

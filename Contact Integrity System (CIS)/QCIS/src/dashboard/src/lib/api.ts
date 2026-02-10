@@ -150,3 +150,43 @@ export const detectPatterns = (token: string) =>
 
 export const getPredictiveAlert = (token: string, userId: string) =>
   request<{ data: { likelihood: number; predicted_violation: string; timeframe: string; reasoning: string } }>('/ai/predictive-alert', { method: 'POST', body: { user_id: userId }, token });
+
+// ─── Stats V2 Endpoints (Intelligence Dashboard) ────────────────
+
+export interface KPIMetric {
+  value: number;
+  previous: number;
+  sparkline: number[];
+  status: 'green' | 'amber' | 'red';
+  tooltip: string;
+}
+
+export interface KPIData {
+  active_users: KPIMetric;
+  active_providers: KPIMetric;
+  messages_sent: KPIMetric;
+  transactions_completed: KPIMetric;
+  off_platform_signals: KPIMetric;
+  failed_transactions: KPIMetric;
+  open_alerts: KPIMetric;
+  trust_score_index: KPIMetric;
+}
+
+export interface TimelinePoint {
+  timestamp: string;
+  messages: number;
+  transactions_initiated: number;
+  transactions_completed: number;
+  risk_signals: number;
+  enforcement_actions: number;
+}
+
+export const getKPIStats = (token: string, params: Record<string, string>) => {
+  const qs = '?' + new URLSearchParams(params).toString();
+  return request<{ data: KPIData }>(`/stats/v2/kpi${qs}`, { token });
+};
+
+export const getTimelineStats = (token: string, params: Record<string, string>) => {
+  const qs = '?' + new URLSearchParams(params).toString();
+  return request<{ data: TimelinePoint[] }>(`/stats/v2/timeline${qs}`, { token });
+};

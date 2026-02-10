@@ -11,8 +11,10 @@ import RiskTrends from './modules/RiskTrends';
 import AppealsModule from './modules/AppealsModule';
 import SystemHealth from './modules/SystemHealth';
 import AuditLogsModule from './modules/AuditLogsModule';
+import IntelligenceDashboard from './intelligence/IntelligenceDashboard';
 
 const MODULES = [
+  { id: 'intelligence', label: 'Intelligence', access: 'intelligence' },
   { id: 'overview', label: 'Overview', access: 'overview' },
   { id: 'category', label: 'Categories', access: 'category' },
   { id: 'alerts', label: 'Alerts & Inbox', access: 'alerts' },
@@ -31,7 +33,7 @@ const SERVICE_CATEGORIES = [
 
 export default function Dashboard() {
   const { auth, logout } = useAuth();
-  const [activeModule, setActiveModule] = useState('overview');
+  const [activeModule, setActiveModule] = useState('intelligence');
   const [activeCategory, setActiveCategory] = useState('All');
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
 
@@ -131,6 +133,7 @@ export default function Dashboard() {
 
       {/* Main content */}
       <main className="flex-1 p-6 overflow-auto">
+        {activeModule === 'intelligence' && <IntelligenceDashboard />}
         {activeModule === 'overview' && <OverviewDashboard />}
         {activeModule === 'category' && <CategoryDashboard activeCategory={activeCategory} />}
         {activeModule === 'alerts' && <AlertsInbox />}

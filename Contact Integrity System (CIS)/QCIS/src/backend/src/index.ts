@@ -25,6 +25,7 @@ import appealRoutes from './api/routes/appeals';
 import analyzeRoutes from './api/routes/analyze';
 import shadowRoutes from './api/routes/shadow';
 import statsRoutes from './api/routes/stats';
+import statsV2Routes from './api/routes/stats-v2';
 import aiRoutes from './api/routes/ai';
 
 const app = express();
@@ -67,6 +68,7 @@ app.use('/api/appeals', appealRoutes);
 app.use('/api/analyze-event', analyzeRoutes);
 app.use('/api/shadow', shadowRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/stats/v2', statsV2Routes);
 app.use('/api/ai', aiRoutes);
 
 // Error handling
