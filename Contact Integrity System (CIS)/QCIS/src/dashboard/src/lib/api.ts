@@ -58,7 +58,7 @@ export const getMe = (token: string) =>
 
 // Health
 export const getHealth = () =>
-  request<{ status: string; shadowMode: boolean; database: string }>('/health');
+  request<{ status: string; uptime: number; shadowMode: boolean; database: string }>('/health');
 
 // Alerts
 export const getAlerts = (token: string, params?: Record<string, string>) => {

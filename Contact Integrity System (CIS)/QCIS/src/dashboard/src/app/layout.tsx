@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { AuthContext, AuthState, AuthUser } from '@/lib/auth';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import '@/styles/globals.css';
 
 /** Decode a JWT payload without a library (only reads exp claim). */
@@ -69,9 +70,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <AuthContext.Provider value={{ auth, login, logout }}>
-          {children}
-        </AuthContext.Provider>
+        <ErrorBoundary>
+          <AuthContext.Provider value={{ auth, login, logout }}>
+            {children}
+          </AuthContext.Provider>
+        </ErrorBoundary>
       </body>
     </html>
   );

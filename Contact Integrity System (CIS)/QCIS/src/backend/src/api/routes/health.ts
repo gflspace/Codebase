@@ -11,6 +11,7 @@ router.get('/health', async (_req: Request, res: Response) => {
     status: dbOk ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
     version: '0.1.0',
+    uptime: Math.floor(process.uptime()),
     environment: config.nodeEnv,
     shadowMode: config.shadowMode,
     enforcementKillSwitch: config.enforcementKillSwitch,

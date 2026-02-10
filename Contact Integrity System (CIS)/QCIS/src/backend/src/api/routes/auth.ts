@@ -12,8 +12,47 @@ const router = Router();
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 
+// ─── IP-based rate limiting for login ───────────────────────────
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const RATE_LIMIT_MAX = 10; // max attempts per window per IP
+
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+
+// Cleanup stale entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of loginAttempts) {
+    if (now > entry.resetAt) loginAttempts.delete(ip);
+  }
+}, 5 * 60 * 1000).unref();
+
+function rateLimit(req: Request, res: Response): boolean {
+  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+    || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return false; // not limited
+  }
+
+  entry.count++;
+
+  if (entry.count > RATE_LIMIT_MAX) {
+    const retryAfterSec = Math.ceil((entry.resetAt - now) / 1000);
+    res.set('Retry-After', String(retryAfterSec));
+    res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
+    return true; // limited
+  }
+
+  return false;
+}
+
 // POST /api/auth/login
 router.post('/login', validate(loginSchema), async (req: Request, res: Response) => {
+  if (rateLimit(req, res)) return;
+
   try {
     const { email, password } = req.body;
 
