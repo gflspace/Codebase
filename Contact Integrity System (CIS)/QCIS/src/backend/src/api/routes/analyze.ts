@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { analyzeEvent } from '../../detection';
-import { verifyHMAC, authenticateJWT, requireRole } from '../middleware/auth';
+import { verifyHMAC, authenticateJWT, requirePermission } from '../middleware/auth';
 import { validate } from '../middleware/validation';
 import { eventSchema } from '../schemas';
 import { generateId, nowISO } from '../../shared/utils';
@@ -18,7 +18,7 @@ router.post(
       verifyHMAC(req, res, next);
     } else {
       authenticateJWT(req, res, () => {
-        requireRole('trust_safety')(req, res, next);
+        requirePermission('risk.view')(req, res, next);
       });
     }
   },

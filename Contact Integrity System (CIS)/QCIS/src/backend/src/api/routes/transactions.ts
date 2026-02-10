@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../../database/connection';
-import { authenticateJWT, requireRole } from '../middleware/auth';
+import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { validate, validateQuery, validateParams } from '../middleware/validation';
 import { createTransactionSchema, updateTransactionSchema, uuidParam, paginationQuery } from '../schemas';
 import { generateId } from '../../shared/utils';
@@ -12,7 +12,7 @@ const router = Router();
 router.get(
   '/',
   authenticateJWT,
-  requireRole('trust_safety', 'ops', 'legal_compliance'),
+  requirePermission('overview.view'),
   validateQuery(paginationQuery.extend({
     user_id: require('zod').z.string().uuid().optional(),
     status: require('zod').z.string().optional(),
@@ -66,7 +66,7 @@ router.get(
 router.get(
   '/:id',
   authenticateJWT,
-  requireRole('trust_safety', 'ops', 'legal_compliance'),
+  requirePermission('overview.view'),
   validateParams(uuidParam),
   async (req: Request, res: Response) => {
     try {
@@ -92,7 +92,7 @@ router.get(
 router.post(
   '/',
   authenticateJWT,
-  requireRole('trust_safety'),
+  requirePermission('overview.view'),
   validate(createTransactionSchema),
   async (req: Request, res: Response) => {
     try {
@@ -130,7 +130,7 @@ router.post(
 router.patch(
   '/:id',
   authenticateJWT,
-  requireRole('trust_safety'),
+  requirePermission('overview.view'),
   validateParams(uuidParam),
   validate(updateTransactionSchema),
   async (req: Request, res: Response) => {

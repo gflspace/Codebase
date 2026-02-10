@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query, transaction } from '../../database/connection';
-import { authenticateJWT, requireRole } from '../middleware/auth';
+import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { validate, validateQuery, validateParams } from '../middleware/validation';
 import { createAppealSchema, resolveAppealSchema, uuidParam, appealQuerySchema } from '../schemas';
 import { generateId } from '../../shared/utils';
@@ -12,7 +12,7 @@ const router = Router();
 router.get(
   '/',
   authenticateJWT,
-  requireRole('trust_safety', 'legal_compliance'),
+  requirePermission('appeals.view'),
   validateQuery(appealQuerySchema),
   async (req: Request, res: Response) => {
     try {
@@ -67,6 +67,7 @@ router.get(
 router.post(
   '/',
   authenticateJWT,
+  requirePermission('appeals.view'),
   validate(createAppealSchema),
   async (req: Request, res: Response) => {
     try {
@@ -123,7 +124,7 @@ router.post(
 router.post(
   '/:id/resolve',
   authenticateJWT,
-  requireRole('trust_safety', 'legal_compliance'),
+  requirePermission('appeals.resolve'),
   validateParams(uuidParam),
   validate(resolveAppealSchema),
   async (req: Request, res: Response) => {

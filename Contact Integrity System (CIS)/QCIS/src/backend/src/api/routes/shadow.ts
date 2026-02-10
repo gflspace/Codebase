@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authenticateJWT, requireRole } from '../middleware/auth';
+import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { config } from '../../config';
 import { query } from '../../database/connection';
 import { getEventBus } from '../../events/bus';
@@ -10,7 +10,7 @@ const router = Router();
 router.get(
   '/status',
   authenticateJWT,
-  requireRole('trust_safety', 'ops'),
+  requirePermission('system_health.view'),
   async (_req: Request, res: Response) => {
     try {
       // Gather shadow mode metrics
@@ -53,7 +53,7 @@ router.get(
 router.get(
   '/metrics',
   authenticateJWT,
-  requireRole('trust_safety', 'ops'),
+  requirePermission('system_health.view'),
   async (_req: Request, res: Response) => {
     try {
       const [

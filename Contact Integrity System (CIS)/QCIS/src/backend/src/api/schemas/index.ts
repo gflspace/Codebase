@@ -206,3 +206,39 @@ export const resolveAppealSchema = z.object({
   status: z.enum(['approved', 'denied']),
   resolution_notes: z.string().min(1),
 });
+
+// ─── Admin Management ────────────────────────────────────────────
+
+export const createAdminSchema = z.object({
+  email: z.string().email().max(255),
+  name: z.string().max(255),
+  password: z.string().min(8).max(128),
+  role: z.enum([
+    'super_admin', 'trust_safety', 'ops', 'legal_compliance',
+    'trust_safety_analyst', 'enforcement_officer', 'risk_intelligence',
+    'ops_monitor', 'auditor', 'custom',
+  ]),
+  force_password_change: z.boolean().default(true),
+  permission_overrides: z.array(z.object({
+    permission: z.string(),
+    granted: z.boolean(),
+  })).default([]),
+});
+
+export const updateAdminSchema = z.object({
+  name: z.string().max(255).optional(),
+  role: z.enum([
+    'super_admin', 'trust_safety', 'ops', 'legal_compliance',
+    'trust_safety_analyst', 'enforcement_officer', 'risk_intelligence',
+    'ops_monitor', 'auditor', 'custom',
+  ]).optional(),
+  active: z.boolean().optional(),
+  permission_overrides: z.array(z.object({
+    permission: z.string(),
+    granted: z.boolean(),
+  })).optional(),
+});
+
+export const resetPasswordSchema = z.object({
+  new_password: z.string().min(8).max(128),
+});

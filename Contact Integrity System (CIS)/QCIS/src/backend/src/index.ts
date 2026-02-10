@@ -27,6 +27,8 @@ import shadowRoutes from './api/routes/shadow';
 import statsRoutes from './api/routes/stats';
 import statsV2Routes from './api/routes/stats-v2';
 import aiRoutes from './api/routes/ai';
+import adminUserRoutes from './api/routes/admin-users';
+import adminRoleRoutes from './api/routes/admin-roles';
 
 const app = express();
 
@@ -70,6 +72,8 @@ app.use('/api/shadow', shadowRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/stats/v2', statsV2Routes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/admin/users', adminUserRoutes);
+app.use('/api/admin/roles', adminRoleRoutes);
 
 // Error handling
 app.use(notFound);

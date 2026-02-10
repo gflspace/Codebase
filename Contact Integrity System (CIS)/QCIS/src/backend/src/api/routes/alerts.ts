@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../../database/connection';
-import { authenticateJWT, requireRole } from '../middleware/auth';
+import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { validate, validateQuery, validateParams } from '../middleware/validation';
 import { alertQuerySchema, updateAlertSchema, uuidParam } from '../schemas';
 
@@ -10,7 +10,7 @@ const router = Router();
 router.get(
   '/',
   authenticateJWT,
-  requireRole('trust_safety', 'ops'),
+  requirePermission('alerts.view'),
   validateQuery(alertQuerySchema),
   async (req: Request, res: Response) => {
     try {
@@ -79,7 +79,7 @@ router.get(
 router.get(
   '/:id',
   authenticateJWT,
-  requireRole('trust_safety', 'ops'),
+  requirePermission('alerts.view'),
   validateParams(uuidParam),
   async (req: Request, res: Response) => {
     try {
@@ -106,7 +106,7 @@ router.get(
 router.patch(
   '/:id',
   authenticateJWT,
-  requireRole('trust_safety'),
+  requirePermission('alerts.action'),
   validateParams(uuidParam),
   validate(updateAlertSchema),
   async (req: Request, res: Response) => {

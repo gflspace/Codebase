@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../../database/connection';
-import { authenticateJWT, requireRole } from '../middleware/auth';
+import { authenticateJWT, requirePermission } from '../middleware/auth';
 
 const router = Router();
 
@@ -137,7 +137,7 @@ function computeStatus(current: number, previous: number, higherIsBad: boolean):
 router.get(
   '/kpi',
   authenticateJWT,
-  requireRole('trust_safety', 'ops', 'legal_compliance'),
+  requirePermission('intelligence.view'),
   async (req: Request, res: Response) => {
     try {
       const filters = parseFilters(req);
@@ -309,7 +309,7 @@ router.get(
 router.get(
   '/timeline',
   authenticateJWT,
-  requireRole('trust_safety', 'ops', 'legal_compliance'),
+  requirePermission('intelligence.view'),
   async (req: Request, res: Response) => {
     try {
       const filters = parseFilters(req);

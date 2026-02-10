@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../../database/connection';
-import { authenticateJWT, requireRole } from '../middleware/auth';
+import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { validateQuery, validateParams } from '../middleware/validation';
 import { riskScoreQuerySchema, uuidParam } from '../schemas';
 
@@ -10,7 +10,7 @@ const router = Router();
 router.get(
   '/',
   authenticateJWT,
-  requireRole('trust_safety', 'ops', 'legal_compliance'),
+  requirePermission('risk.view'),
   validateQuery(riskScoreQuerySchema),
   async (req: Request, res: Response) => {
     try {
@@ -72,7 +72,7 @@ router.get(
 router.get(
   '/user/:id',
   authenticateJWT,
-  requireRole('trust_safety', 'ops', 'legal_compliance'),
+  requirePermission('risk.view'),
   validateParams(uuidParam),
   async (req: Request, res: Response) => {
     try {
@@ -98,7 +98,7 @@ router.get(
 router.get(
   '/:id',
   authenticateJWT,
-  requireRole('trust_safety', 'ops', 'legal_compliance'),
+  requirePermission('risk.view'),
   validateParams(uuidParam),
   async (req: Request, res: Response) => {
     try {

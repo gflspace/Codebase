@@ -35,10 +35,20 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
 
 // Auth
 export const login = (email: string, password: string) =>
-  request<{ token: string; user: { id: string; email: string; name: string; role: string } }>('/auth/login', { method: 'POST', body: { email, password } });
+  request<{
+    token: string;
+    user: {
+      id: string;
+      email: string;
+      name: string;
+      role: string;
+      permissions: string[];
+      force_password_change: boolean;
+    };
+  }>('/auth/login', { method: 'POST', body: { email, password } });
 
 export const getMe = (token: string) =>
-  request<{ user: { id: string; email: string; role: string } }>('/auth/me', { token });
+  request<{ user: { id: string; email: string; role: string; permissions: string[] } }>('/auth/me', { token });
 
 // Health
 export const getHealth = () =>
@@ -190,3 +200,68 @@ export const getTimelineStats = (token: string, params: Record<string, string>) 
   const qs = '?' + new URLSearchParams(params).toString();
   return request<{ data: TimelinePoint[] }>(`/stats/v2/timeline${qs}`, { token });
 };
+
+// ─── Admin Management Endpoints ──────────────────────────────────
+
+export interface AdminUserData {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  active: boolean;
+  permissions: string[];
+  permission_overrides?: Array<{ permission: string; granted: boolean }>;
+  force_password_change: boolean;
+  last_login_at: string | null;
+  last_login_ip: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  action_count_30d?: number;
+}
+
+export interface RoleData {
+  role: string;
+  permissions: string[];
+}
+
+export interface PermissionData {
+  key: string;
+  label: string;
+  description: string;
+  category: string;
+  is_critical: boolean;
+}
+
+export const getAdminUsers = (token: string) =>
+  request<{ data: AdminUserData[] }>('/admin/users', { token });
+
+export const getAdminUser = (token: string, id: string) =>
+  request<{ data: AdminUserData }>(`/admin/users/${id}`, { token });
+
+export const createAdminUser = (token: string, data: {
+  email: string;
+  name: string;
+  password: string;
+  role: string;
+  force_password_change?: boolean;
+  permission_overrides?: Array<{ permission: string; granted: boolean }>;
+}) =>
+  request<{ data: AdminUserData }>('/admin/users', { method: 'POST', body: data, token });
+
+export const updateAdminUser = (token: string, id: string, data: {
+  name?: string;
+  role?: string;
+  active?: boolean;
+  permission_overrides?: Array<{ permission: string; granted: boolean }>;
+}) =>
+  request<{ data: AdminUserData }>(`/admin/users/${id}`, { method: 'PATCH', body: data, token });
+
+export const resetAdminPassword = (token: string, id: string, newPassword: string) =>
+  request<{ data: { message: string; admin: { id: string; email: string; name: string } } }>(
+    `/admin/users/${id}/reset-password`,
+    { method: 'POST', body: { new_password: newPassword }, token }
+  );
+
+export const getAdminRoles = (token: string) =>
+  request<{ data: { roles: RoleData[]; permissions: PermissionData[] } }>('/admin/roles', { token });

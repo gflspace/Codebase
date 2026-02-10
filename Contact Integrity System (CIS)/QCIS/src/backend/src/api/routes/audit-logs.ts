@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../../database/connection';
-import { authenticateJWT, requireRole } from '../middleware/auth';
+import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { validateQuery } from '../middleware/validation';
 import { auditLogQuerySchema } from '../schemas';
 
@@ -10,7 +10,7 @@ const router = Router();
 router.get(
   '/',
   authenticateJWT,
-  requireRole('trust_safety', 'legal_compliance'),
+  requirePermission('audit_logs.view'),
   validateQuery(auditLogQuerySchema),
   async (req: Request, res: Response) => {
     try {

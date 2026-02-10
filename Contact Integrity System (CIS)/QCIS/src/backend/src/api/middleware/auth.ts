@@ -11,6 +11,7 @@ declare global {
         id: string;
         email: string;
         role: string;
+        permissions: string[];
       };
     }
   }
@@ -31,26 +32,35 @@ export function authenticateJWT(req: Request, res: Response, next: NextFunction)
       id: string;
       email: string;
       role: string;
+      permissions?: string[];
     };
-    req.adminUser = decoded;
+    req.adminUser = {
+      id: decoded.id,
+      email: decoded.email,
+      role: decoded.role,
+      permissions: decoded.permissions || [],
+    };
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' });
   }
 }
 
-export function requireRole(...roles: string[]) {
+export function requirePermission(...perms: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.adminUser) {
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
 
-    if (!roles.includes(req.adminUser.role)) {
+    const userPerms = req.adminUser.permissions;
+    const hasAll = perms.every((p) => userPerms.includes(p));
+
+    if (!hasAll) {
       res.status(403).json({
         error: 'Insufficient permissions',
-        required: roles,
-        current: req.adminUser.role,
+        required: perms,
+        current: userPerms,
       });
       return;
     }
@@ -90,9 +100,9 @@ export function verifyHMAC(req: Request, res: Response, next: NextFunction): voi
   next();
 }
 
-export function generateToken(user: { id: string; email: string; role: string }): string {
+export function generateToken(user: { id: string; email: string; role: string; permissions: string[] }): string {
   return jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
+    { id: user.id, email: user.email, role: user.role, permissions: user.permissions },
     config.jwt.secret,
     { expiresIn: config.jwt.expiresIn as jwt.SignOptions["expiresIn"] }
   );

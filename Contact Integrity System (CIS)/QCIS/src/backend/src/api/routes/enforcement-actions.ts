@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../../database/connection';
-import { authenticateJWT, requireRole } from '../middleware/auth';
+import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { validateQuery, validateParams } from '../middleware/validation';
 import { enforcementQuerySchema, uuidParam } from '../schemas';
 import { emitEnforcementReversed } from '../../events/emit';
@@ -11,7 +11,7 @@ const router = Router();
 router.get(
   '/',
   authenticateJWT,
-  requireRole('trust_safety', 'legal_compliance'),
+  requirePermission('enforcement.view'),
   validateQuery(enforcementQuerySchema),
   async (req: Request, res: Response) => {
     try {
@@ -73,7 +73,7 @@ router.get(
 router.get(
   '/:id',
   authenticateJWT,
-  requireRole('trust_safety', 'legal_compliance'),
+  requirePermission('enforcement.view'),
   validateParams(uuidParam),
   async (req: Request, res: Response) => {
     try {
@@ -100,7 +100,7 @@ router.get(
 router.post(
   '/:id/reverse',
   authenticateJWT,
-  requireRole('trust_safety'),
+  requirePermission('enforcement.reverse'),
   validateParams(uuidParam),
   async (req: Request, res: Response) => {
     try {

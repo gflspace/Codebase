@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../../database/connection';
-import { authenticateJWT, requireRole } from '../middleware/auth';
+import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { config } from '../../config';
 import * as openai from '../../services/openai';
 
@@ -19,7 +19,7 @@ function requireOpenAI(_req: Request, res: Response, next: () => void) {
 router.post(
   '/risk-summary',
   authenticateJWT,
-  requireRole('trust_safety', 'ops'),
+  requirePermission('alerts.ai_summary'),
   requireOpenAI,
   async (req: Request, res: Response) => {
     try {
@@ -67,7 +67,7 @@ router.post(
 router.post(
   '/appeal-analysis',
   authenticateJWT,
-  requireRole('trust_safety', 'legal_compliance'),
+  requirePermission('appeals.ai_analysis'),
   requireOpenAI,
   async (req: Request, res: Response) => {
     try {
@@ -118,7 +118,7 @@ router.post(
 router.post(
   '/pattern-detection',
   authenticateJWT,
-  requireRole('trust_safety', 'ops'),
+  requirePermission('risk.ai_patterns'),
   requireOpenAI,
   async (_req: Request, res: Response) => {
     try {
@@ -155,7 +155,7 @@ router.post(
 router.post(
   '/predictive-alert',
   authenticateJWT,
-  requireRole('trust_safety', 'ops'),
+  requirePermission('risk.ai_predictive'),
   requireOpenAI,
   async (req: Request, res: Response) => {
     try {

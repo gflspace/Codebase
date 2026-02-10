@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../../database/connection';
-import { authenticateJWT, requireRole } from '../middleware/auth';
+import { authenticateJWT, requirePermission } from '../middleware/auth';
 
 const router = Router();
 
@@ -8,7 +8,7 @@ const router = Router();
 router.get(
   '/overview',
   authenticateJWT,
-  requireRole('trust_safety', 'ops', 'legal_compliance'),
+  requirePermission('overview.view'),
   async (_req: Request, res: Response) => {
     try {
       const [alertStats, caseStats, enforcementStats, scoreStats] = await Promise.all([
@@ -73,7 +73,7 @@ router.get(
 router.get(
   '/by-category',
   authenticateJWT,
-  requireRole('trust_safety', 'ops', 'legal_compliance'),
+  requirePermission('category.view'),
   async (_req: Request, res: Response) => {
     try {
       const result = await query(`
@@ -104,7 +104,7 @@ router.get(
 router.get(
   '/by-criticality',
   authenticateJWT,
-  requireRole('trust_safety', 'ops', 'legal_compliance'),
+  requirePermission('overview.view'),
   async (_req: Request, res: Response) => {
     try {
       const [alertsByPriority, enforcementsByType] = await Promise.all([
@@ -139,7 +139,7 @@ router.get(
 router.get(
   '/trends',
   authenticateJWT,
-  requireRole('trust_safety', 'ops', 'legal_compliance'),
+  requirePermission('overview.view'),
   async (_req: Request, res: Response) => {
     try {
       const [alertTrends, caseTrends, enforcementTrends] = await Promise.all([

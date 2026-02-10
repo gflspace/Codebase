@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authenticateJWT, requireRole } from '../middleware/auth';
+import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { validate } from '../middleware/validation';
 import { eventSchema } from '../schemas';
 import { generateId, nowISO } from '../../shared/utils';
@@ -10,7 +10,7 @@ const router = Router();
 router.post(
   '/',
   authenticateJWT,
-  requireRole('trust_safety'),
+  requirePermission('alerts.action'),
   validate(eventSchema),
   async (req: Request, res: Response) => {
     try {

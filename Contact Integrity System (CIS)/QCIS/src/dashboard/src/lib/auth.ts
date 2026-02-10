@@ -2,13 +2,15 @@
 
 'use client';
 
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
-  role: 'trust_safety' | 'ops' | 'legal_compliance';
+  role: string;
+  permissions: string[];
+  force_password_change?: boolean;
 }
 
 export interface AuthState {
@@ -31,28 +33,14 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-// RBAC helpers
-export function hasAccess(role: string, module: string): boolean {
-  const ACCESS_MATRIX: Record<string, Record<string, boolean>> = {
-    trust_safety: {
-      intelligence: true,
-      overview: true, category: true,
-      alerts: true, cases: true, enforcement: true, risk_trends: true,
-      appeals: true, system_health: true, audit_logs: true,
-    },
-    ops: {
-      intelligence: true,
-      overview: true, category: true,
-      alerts: true, cases: false, enforcement: false, risk_trends: true,
-      appeals: false, system_health: true, audit_logs: false,
-    },
-    legal_compliance: {
-      intelligence: true,
-      overview: true, category: true,
-      alerts: true, cases: true, enforcement: true, risk_trends: true,
-      appeals: true, system_health: false, audit_logs: true,
-    },
-  };
+// Permission-based access check
+export function hasPermission(user: AuthUser | null, ...perms: string[]): boolean {
+  if (!user || !user.permissions) return false;
+  return perms.every((p) => user.permissions.includes(p));
+}
 
-  return ACCESS_MATRIX[role]?.[module] ?? false;
+// Hook: returns true if the current user has all specified permissions
+export function usePermission(...perms: string[]): boolean {
+  const { auth } = useAuth();
+  return useMemo(() => hasPermission(auth.user, ...perms), [auth.user, ...perms]);
 }

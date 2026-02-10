@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../../database/connection';
-import { authenticateJWT, requireRole } from '../middleware/auth';
+import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { validate, validateQuery, validateParams } from '../middleware/validation';
 import { createCaseSchema, updateCaseSchema, addCaseNoteSchema, uuidParam, caseQuerySchema } from '../schemas';
 import { generateId } from '../../shared/utils';
@@ -11,7 +11,7 @@ const router = Router();
 router.get(
   '/',
   authenticateJWT,
-  requireRole('trust_safety', 'legal_compliance'),
+  requirePermission('cases.view'),
   validateQuery(caseQuerySchema),
   async (req: Request, res: Response) => {
     try {
@@ -69,7 +69,7 @@ router.get(
 router.get(
   '/:id',
   authenticateJWT,
-  requireRole('trust_safety', 'legal_compliance'),
+  requirePermission('cases.view'),
   validateParams(uuidParam),
   async (req: Request, res: Response) => {
     try {
@@ -106,7 +106,7 @@ router.get(
 router.post(
   '/',
   authenticateJWT,
-  requireRole('trust_safety'),
+  requirePermission('cases.create'),
   validate(createCaseSchema),
   async (req: Request, res: Response) => {
     try {
@@ -132,7 +132,7 @@ router.post(
 router.patch(
   '/:id',
   authenticateJWT,
-  requireRole('trust_safety'),
+  requirePermission('cases.action'),
   validateParams(uuidParam),
   validate(updateCaseSchema),
   async (req: Request, res: Response) => {
@@ -174,7 +174,7 @@ router.patch(
 router.post(
   '/:id/notes',
   authenticateJWT,
-  requireRole('trust_safety'),
+  requirePermission('cases.action'),
   validateParams(uuidParam),
   validate(addCaseNoteSchema),
   async (req: Request, res: Response) => {

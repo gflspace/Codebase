@@ -82,9 +82,16 @@ export enum CaseStatus {
 }
 
 export enum AdminRole {
+  SUPER_ADMIN = 'super_admin',
   TRUST_SAFETY = 'trust_safety',
   OPS = 'ops',
   LEGAL_COMPLIANCE = 'legal_compliance',
+  TRUST_SAFETY_ANALYST = 'trust_safety_analyst',
+  ENFORCEMENT_OFFICER = 'enforcement_officer',
+  RISK_INTELLIGENCE = 'risk_intelligence',
+  OPS_MONITOR = 'ops_monitor',
+  AUDITOR = 'auditor',
+  CUSTOM = 'custom',
 }
 
 export enum TrendDirection {
@@ -257,5 +264,11 @@ export interface AdminUser {
   email: string;
   name: string;
   role: AdminRole;
+  permissions: string[];
+  active: boolean;
+  force_password_change: boolean;
+  last_login_at: string | null;
+  last_login_ip: string | null;
+  created_by: string | null;
   created_at: string;
 }
