@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query } from '../../database/connection';
 import { authenticateJWT, requireRole } from '../middleware/auth';
 import { validate, validateQuery, validateParams } from '../middleware/validation';
-import { createUserSchema, updateUserSchema, uuidParam, paginationQuery } from '../schemas';
+import { createUserSchema, updateUserSchema, uuidParam, userQuerySchema } from '../schemas';
 import { generateId } from '../../shared/utils';
 
 const router = Router();
@@ -12,19 +12,39 @@ router.get(
   '/',
   authenticateJWT,
   requireRole('trust_safety', 'ops', 'legal_compliance'),
-  validateQuery(paginationQuery),
+  validateQuery(userQuerySchema),
   async (req: Request, res: Response) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
       const offset = (page - 1) * limit;
 
+      const conditions: string[] = [];
+      const values: unknown[] = [];
+      let paramIndex = 1;
+
+      if (req.query.user_type) {
+        conditions.push(`user_type = $${paramIndex++}`);
+        values.push(req.query.user_type);
+      }
+      if (req.query.service_category) {
+        conditions.push(`service_category = $${paramIndex++}`);
+        values.push(req.query.service_category);
+      }
+      if (req.query.status) {
+        conditions.push(`status = $${paramIndex++}`);
+        values.push(req.query.status);
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
       const result = await query(
-        'SELECT id, external_id, display_name, email, verification_status, trust_score, status, metadata, created_at, updated_at FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2',
-        [limit, offset]
+        `SELECT id, external_id, display_name, email, phone, user_type, service_category, verification_status, trust_score, status, metadata, created_at, updated_at
+         FROM users ${where} ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+        [...values, limit, offset]
       );
 
-      const countResult = await query('SELECT COUNT(*) FROM users');
+      const countResult = await query(`SELECT COUNT(*) FROM users ${where}`, values);
       const total = parseInt(countResult.rows[0].count, 10);
 
       res.json({
@@ -47,7 +67,7 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const result = await query(
-        'SELECT id, external_id, display_name, email, verification_status, trust_score, status, metadata, created_at, updated_at FROM users WHERE id = $1',
+        'SELECT id, external_id, display_name, email, phone, user_type, service_category, verification_status, trust_score, status, metadata, created_at, updated_at FROM users WHERE id = $1',
         [req.params.id]
       );
 

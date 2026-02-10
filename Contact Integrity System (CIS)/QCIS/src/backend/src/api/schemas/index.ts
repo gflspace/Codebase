@@ -30,6 +30,12 @@ export const eventSchema = z.object({
 
 // ─── Users ────────────────────────────────────────────────────
 
+export const userQuerySchema = paginationQuery.extend({
+  user_type: z.string().optional(),
+  service_category: z.string().optional(),
+  status: z.enum(['active', 'restricted', 'suspended', 'banned']).optional(),
+});
+
 export const createUserSchema = z.object({
   external_id: z.string().max(255).optional(),
   display_name: z.string().max(255).optional(),
@@ -108,6 +114,7 @@ export const riskScoreQuerySchema = paginationQuery.extend({
   user_id: z.string().uuid().optional(),
   tier: z.enum(['monitor', 'low', 'medium', 'high', 'critical']).optional(),
   min_score: z.coerce.number().min(0).max(100).optional(),
+  category: z.string().optional(),
 });
 
 // ─── Enforcement Actions ──────────────────────────────────────
@@ -119,6 +126,7 @@ export const enforcementQuerySchema = paginationQuery.extend({
     'account_suspension', 'permanent_ban',
   ]).optional(),
   active_only: z.coerce.boolean().optional(),
+  category: z.string().optional(),
 });
 
 // ─── Audit Logs ───────────────────────────────────────────────
@@ -145,6 +153,8 @@ export const alertQuerySchema = paginationQuery.extend({
   status: z.enum(['open', 'assigned', 'in_progress', 'resolved', 'dismissed']).optional(),
   priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
   assigned_to: z.string().uuid().optional(),
+  category: z.string().optional(),
+  user_type: z.string().optional(),
 });
 
 export const updateAlertSchema = z.object({
@@ -154,6 +164,12 @@ export const updateAlertSchema = z.object({
 });
 
 // ─── Cases ────────────────────────────────────────────────────
+
+export const caseQuerySchema = paginationQuery.extend({
+  status: z.enum(['open', 'investigating', 'pending_action', 'resolved', 'closed']).optional(),
+  category: z.string().optional(),
+  user_type: z.string().optional(),
+});
 
 export const createCaseSchema = z.object({
   user_id: z.string().uuid(),
@@ -174,6 +190,11 @@ export const addCaseNoteSchema = z.object({
 });
 
 // ─── Appeals ──────────────────────────────────────────────────
+
+export const appealQuerySchema = paginationQuery.extend({
+  status: z.enum(['submitted', 'under_review', 'approved', 'denied']).optional(),
+  category: z.string().optional(),
+});
 
 export const createAppealSchema = z.object({
   enforcement_action_id: z.string().uuid(),

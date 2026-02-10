@@ -55,4 +55,9 @@ export const config = {
 
   logLevel: optional('LOG_LEVEL', 'debug'),
   dashboardUrl: optional('DASHBOARD_URL', 'http://localhost:3000'),
+
+  openai: {
+    apiKey: optional('OPENAI_API_KEY', ''),
+    model: optional('OPENAI_MODEL', 'gpt-4o-mini'),
+  },
 } as const;

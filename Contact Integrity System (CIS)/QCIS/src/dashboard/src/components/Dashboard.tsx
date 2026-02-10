@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useAuth, hasAccess } from '@/lib/auth';
+import OverviewDashboard from './modules/OverviewDashboard';
+import CategoryDashboard from './modules/CategoryDashboard';
 import AlertsInbox from './modules/AlertsInbox';
 import CaseInvestigation from './modules/CaseInvestigation';
 import EnforcementManagement from './modules/EnforcementManagement';
@@ -11,6 +13,8 @@ import SystemHealth from './modules/SystemHealth';
 import AuditLogsModule from './modules/AuditLogsModule';
 
 const MODULES = [
+  { id: 'overview', label: 'Overview', access: 'overview' },
+  { id: 'category', label: 'Categories', access: 'category' },
   { id: 'alerts', label: 'Alerts & Inbox', access: 'alerts' },
   { id: 'cases', label: 'Case Investigation', access: 'cases' },
   { id: 'enforcement', label: 'Enforcement', access: 'enforcement' },
@@ -22,7 +26,7 @@ const MODULES = [
 
 export default function Dashboard() {
   const { auth, logout } = useAuth();
-  const [activeModule, setActiveModule] = useState('alerts');
+  const [activeModule, setActiveModule] = useState('overview');
 
   if (!auth.user) return null;
 
@@ -69,6 +73,8 @@ export default function Dashboard() {
 
       {/* Main content */}
       <main className="flex-1 p-6 overflow-auto">
+        {activeModule === 'overview' && <OverviewDashboard />}
+        {activeModule === 'category' && <CategoryDashboard />}
         {activeModule === 'alerts' && <AlertsInbox />}
         {activeModule === 'cases' && <CaseInvestigation />}
         {activeModule === 'enforcement' && <EnforcementManagement />}

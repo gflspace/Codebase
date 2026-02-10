@@ -122,3 +122,31 @@ export const resolveAppeal = (token: string, id: string, data: { status: string;
 // Events
 export const submitEvent = (token: string, event: unknown) =>
   request<{ accepted: boolean; event_id: string }>('/events', { method: 'POST', body: event, token });
+
+// ─── Stats Endpoints ──────────────────────────────────────────
+
+export const getOverviewStats = (token: string) =>
+  request<{ data: { alerts: Record<string, string>; cases: Record<string, string>; enforcements: Record<string, string>; risk: Record<string, string> } }>('/stats/overview', { token });
+
+export const getCategoryStats = (token: string) =>
+  request<{ data: Array<{ category: string; alert_count: string; case_count: string; enforcement_count: string; avg_trust_score: string }> }>('/stats/by-category', { token });
+
+export const getCriticalityStats = (token: string) =>
+  request<{ data: { alerts_by_priority: Array<{ priority: string; count: string }>; enforcements_by_type: Array<{ action_type: string; count: string }> } }>('/stats/by-criticality', { token });
+
+export const getTrendStats = (token: string) =>
+  request<{ data: { alerts: Array<{ date: string; count: string }>; cases: Array<{ date: string; count: string }>; enforcements: Array<{ date: string; count: string }> } }>('/stats/trends', { token });
+
+// ─── AI Endpoints ─────────────────────────────────────────────
+
+export const getRiskSummary = (token: string, userId: string) =>
+  request<{ data: { summary: string; risk_level: string; recommendations: string[] } }>('/ai/risk-summary', { method: 'POST', body: { user_id: userId }, token });
+
+export const analyzeAppealAI = (token: string, appealId: string) =>
+  request<{ data: { recommendation: string; reasoning: string; confidence: number } }>('/ai/appeal-analysis', { method: 'POST', body: { appeal_id: appealId }, token });
+
+export const detectPatterns = (token: string) =>
+  request<{ data: { patterns: Array<{ pattern: string; severity: string; details: string }> } }>('/ai/pattern-detection', { method: 'POST', body: {}, token });
+
+export const getPredictiveAlert = (token: string, userId: string) =>
+  request<{ data: { likelihood: number; predicted_violation: string; timeframe: string; reasoning: string } }>('/ai/predictive-alert', { method: 'POST', body: { user_id: userId }, token });

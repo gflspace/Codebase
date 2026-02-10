@@ -63,6 +63,96 @@ VALUES (
 ) ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
+-- 1b. PROVIDER USERS — Across service categories
+-- ============================================================
+
+-- provider_elec: Electrical provider
+INSERT INTO users (id, external_id, display_name, email, phone, user_type, service_category, verification_status, trust_score, status, metadata)
+VALUES (
+  'aaaaaaaa-bbbb-cccc-dddd-000000000004',
+  'TEST_prov_elec',
+  'Kwame Asante',
+  'kwame.asante@testdata.cis',
+  '555-301-4001',
+  'provider',
+  'Electrical',
+  'verified',
+  72.00,
+  'active',
+  '{"test_data": true, "label": "prov_elec", "tenure": "mid"}'
+) ON CONFLICT (id) DO NOTHING;
+
+-- provider_moving: Moving provider
+INSERT INTO users (id, external_id, display_name, email, phone, user_type, service_category, verification_status, trust_score, status, metadata)
+VALUES (
+  'aaaaaaaa-bbbb-cccc-dddd-000000000005',
+  'TEST_prov_moving',
+  'Lucia Fernandez',
+  'lucia.fernandez@testdata.cis',
+  '555-301-4002',
+  'provider',
+  'Moving',
+  'verified',
+  45.00,
+  'restricted',
+  '{"test_data": true, "label": "prov_moving", "tenure": "new"}'
+) ON CONFLICT (id) DO NOTHING;
+
+-- provider_tutoring: Tutoring provider
+INSERT INTO users (id, external_id, display_name, email, phone, user_type, service_category, verification_status, trust_score, status, metadata)
+VALUES (
+  'aaaaaaaa-bbbb-cccc-dddd-000000000006',
+  'TEST_prov_tutor',
+  'David Kim',
+  'david.kim@testdata.cis',
+  '555-301-4003',
+  'provider',
+  'Tutoring',
+  'verified',
+  88.00,
+  'active',
+  '{"test_data": true, "label": "prov_tutor", "tenure": "old"}'
+) ON CONFLICT (id) DO NOTHING;
+
+-- provider_handyman: Handyman provider
+INSERT INTO users (id, external_id, display_name, email, phone, user_type, service_category, verification_status, trust_score, status, metadata)
+VALUES (
+  'aaaaaaaa-bbbb-cccc-dddd-000000000007',
+  'TEST_prov_handy',
+  'Mike Thompson',
+  'mike.thompson@testdata.cis',
+  '555-301-4004',
+  'provider',
+  'Handyman',
+  'verified',
+  38.00,
+  'active',
+  '{"test_data": true, "label": "prov_handy", "tenure": "mid"}'
+) ON CONFLICT (id) DO NOTHING;
+
+-- provider_petcare: Pet Care provider
+INSERT INTO users (id, external_id, display_name, email, phone, user_type, service_category, verification_status, trust_score, status, metadata)
+VALUES (
+  'aaaaaaaa-bbbb-cccc-dddd-000000000008',
+  'TEST_prov_petcare',
+  'Sarah Nguyen',
+  'sarah.nguyen@testdata.cis',
+  '555-301-4005',
+  'provider',
+  'Pet Care',
+  'verified',
+  62.00,
+  'active',
+  '{"test_data": true, "label": "prov_petcare", "tenure": "mid"}'
+) ON CONFLICT (id) DO NOTHING;
+
+-- Update existing users with phone, user_type, service_category (from migration 010)
+UPDATE users SET phone = '555-867-5309', user_type = 'customer' WHERE id = 'd68ec8ce-20c1-4400-b6eb-4c19884ac48d' AND phone IS NULL;
+UPDATE users SET phone = '555-234-5678', user_type = 'customer' WHERE id = '55cc0cb7-aee7-4b07-a38e-c7d46ddd2a0d' AND phone IS NULL;
+UPDATE users SET phone = '555-199-0001', user_type = 'provider', service_category = 'Cleaning' WHERE id = 'aaaaaaaa-bbbb-cccc-dddd-000000000001' AND phone IS NULL;
+UPDATE users SET phone = '555-199-0002', user_type = 'provider', service_category = 'Plumbing' WHERE id = 'aaaaaaaa-bbbb-cccc-dddd-000000000002' AND phone IS NULL;
+
+-- ============================================================
 -- 2. MESSAGES — Synthetic conversations (case investigation context)
 -- ============================================================
 

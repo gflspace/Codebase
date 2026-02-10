@@ -23,29 +23,36 @@ router.get(
       let paramIndex = 1;
 
       if (req.query.user_id) {
-        conditions.push(`user_id = $${paramIndex++}`);
+        conditions.push(`rs.user_id = $${paramIndex++}`);
         values.push(req.query.user_id);
       }
       if (req.query.tier) {
-        conditions.push(`tier = $${paramIndex++}`);
+        conditions.push(`rs.tier = $${paramIndex++}`);
         values.push(req.query.tier);
       }
       if (req.query.min_score) {
-        conditions.push(`score >= $${paramIndex++}`);
+        conditions.push(`rs.score >= $${paramIndex++}`);
         values.push(req.query.min_score);
+      }
+      if (req.query.category) {
+        conditions.push(`u.service_category = $${paramIndex++}`);
+        values.push(req.query.category);
       }
 
       const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
       const result = await query(
-        `SELECT id, user_id, score, tier, factors, trend, signal_count, last_signal_at, created_at
-         FROM risk_scores ${where}
-         ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+        `SELECT rs.id, rs.user_id, rs.score, rs.tier, rs.factors, rs.trend, rs.signal_count, rs.last_signal_at, rs.created_at,
+                u.display_name AS user_name, u.email AS user_email, u.phone AS user_phone, u.user_type, u.service_category
+         FROM risk_scores rs
+         LEFT JOIN users u ON u.id = rs.user_id
+         ${where}
+         ORDER BY rs.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
         [...values, limit, offset]
       );
 
       const countResult = await query(
-        `SELECT COUNT(*) FROM risk_scores ${where}`,
+        `SELECT COUNT(*) FROM risk_scores rs LEFT JOIN users u ON u.id = rs.user_id ${where}`,
         values
       );
       const total = parseInt(countResult.rows[0].count, 10);

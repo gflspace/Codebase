@@ -23,29 +23,36 @@ router.get(
       let paramIndex = 1;
 
       if (req.query.user_id) {
-        conditions.push(`user_id = $${paramIndex++}`);
+        conditions.push(`ea.user_id = $${paramIndex++}`);
         values.push(req.query.user_id);
       }
       if (req.query.action_type) {
-        conditions.push(`action_type = $${paramIndex++}`);
+        conditions.push(`ea.action_type = $${paramIndex++}`);
         values.push(req.query.action_type);
       }
       if (req.query.active_only === 'true') {
-        conditions.push(`reversed_at IS NULL AND (effective_until IS NULL OR effective_until > NOW())`);
+        conditions.push(`ea.reversed_at IS NULL AND (ea.effective_until IS NULL OR ea.effective_until > NOW())`);
+      }
+      if (req.query.category) {
+        conditions.push(`u.service_category = $${paramIndex++}`);
+        values.push(req.query.category);
       }
 
       const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
       const result = await query(
-        `SELECT id, user_id, action_type, reason, reason_code, triggering_signal_ids, risk_score_id,
-                effective_until, reversed_at, reversed_by, reversal_reason, automated, approved_by, metadata, created_at
-         FROM enforcement_actions ${where}
-         ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+        `SELECT ea.id, ea.user_id, ea.action_type, ea.reason, ea.reason_code, ea.triggering_signal_ids, ea.risk_score_id,
+                ea.effective_until, ea.reversed_at, ea.reversed_by, ea.reversal_reason, ea.automated, ea.approved_by, ea.metadata, ea.created_at,
+                u.display_name AS user_name, u.email AS user_email, u.phone AS user_phone, u.user_type, u.service_category, u.trust_score AS user_trust_score
+         FROM enforcement_actions ea
+         LEFT JOIN users u ON u.id = ea.user_id
+         ${where}
+         ORDER BY ea.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
         [...values, limit, offset]
       );
 
       const countResult = await query(
-        `SELECT COUNT(*) FROM enforcement_actions ${where}`,
+        `SELECT COUNT(*) FROM enforcement_actions ea LEFT JOIN users u ON u.id = ea.user_id ${where}`,
         values
       );
       const total = parseInt(countResult.rows[0].count, 10);
@@ -70,7 +77,8 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const result = await query(
-        'SELECT * FROM enforcement_actions WHERE id = $1',
+        `SELECT ea.*, u.display_name AS user_name, u.email AS user_email, u.phone AS user_phone, u.user_type, u.service_category, u.trust_score AS user_trust_score
+         FROM enforcement_actions ea LEFT JOIN users u ON u.id = ea.user_id WHERE ea.id = $1`,
         [req.params.id]
       );
 
