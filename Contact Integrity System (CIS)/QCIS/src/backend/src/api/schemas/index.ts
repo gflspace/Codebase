@@ -21,6 +21,10 @@ export const eventSchema = z.object({
     'user.status_changed',
     'enforcement.action_applied', 'enforcement.action_reversed',
     'appeal.submitted', 'appeal.resolved',
+    'booking.created', 'booking.updated', 'booking.completed', 'booking.cancelled', 'booking.no_show',
+    'wallet.deposit', 'wallet.withdrawal', 'wallet.transfer',
+    'provider.registered', 'provider.updated',
+    'user.registered',
   ]),
   correlation_id: z.string().uuid().optional(),
   timestamp: z.string().datetime().optional(),
@@ -92,6 +96,9 @@ export const riskSignalSchema = z.object({
     'CONTACT_MESSAGING_APP', 'PAYMENT_EXTERNAL',
     'OFF_PLATFORM_INTENT', 'GROOMING_LANGUAGE',
     'TX_REDIRECT_ATTEMPT', 'TX_FAILURE_CORRELATED', 'TX_TIMING_ALIGNMENT',
+    'BOOKING_CANCEL_PATTERN', 'BOOKING_NO_SHOW_PATTERN',
+    'WALLET_VELOCITY_SPIKE', 'WALLET_SPLIT_PATTERN',
+    'PROVIDER_RATING_DROP', 'PROVIDER_COMPLAINT_CLUSTER',
   ]),
   confidence: z.number().min(0).max(1),
   evidence: z.object({
@@ -205,6 +212,36 @@ export const createAppealSchema = z.object({
 export const resolveAppealSchema = z.object({
   status: z.enum(['approved', 'denied']),
   resolution_notes: z.string().min(1),
+});
+
+// ─── Webhooks ────────────────────────────────────────────────
+
+export const webhookIngestSchema = z.object({
+  event_id: z.string().max(255),
+  event_type: z.string().max(100),
+  timestamp: z.string().datetime(),
+  source: z.enum(['qwickservices']).default('qwickservices'),
+  payload: z.record(z.unknown()),
+});
+
+// ─── Bookings ────────────────────────────────────────────────
+
+export const bookingQuerySchema = paginationQuery.extend({
+  client_id: z.string().uuid().optional(),
+  provider_id: z.string().uuid().optional(),
+  status: z.enum(['pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show', 'disputed']).optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+});
+
+// ─── Wallet Transactions ─────────────────────────────────────
+
+export const walletTransactionQuerySchema = paginationQuery.extend({
+  user_id: z.string().uuid().optional(),
+  tx_type: z.enum(['deposit', 'withdrawal', 'transfer', 'payment', 'refund']).optional(),
+  status: z.enum(['pending', 'completed', 'failed', 'reversed']).optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
 });
 
 // ─── Admin Management ────────────────────────────────────────────

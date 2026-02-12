@@ -50,6 +50,11 @@ export const config = {
     secret: requiredInProduction('HMAC_SECRET', 'dev_hmac_secret_change_in_production'),
   },
 
+  webhook: {
+    secret: requiredInProduction('WEBHOOK_SECRET', 'dev_webhook_secret_change_in_production'),
+    allowedSources: optional('WEBHOOK_ALLOWED_SOURCES', 'qwickservices').split(','),
+  },
+
   shadowMode: optional('SHADOW_MODE', 'true') === 'true',
   enforcementKillSwitch: optional('ENFORCEMENT_KILL_SWITCH', 'false') === 'true',
 

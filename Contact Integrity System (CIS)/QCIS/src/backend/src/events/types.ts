@@ -23,6 +23,25 @@ export enum EventType {
   // Appeal events
   APPEAL_SUBMITTED = 'appeal.submitted',
   APPEAL_RESOLVED = 'appeal.resolved',
+
+  // Booking events
+  BOOKING_CREATED = 'booking.created',
+  BOOKING_UPDATED = 'booking.updated',
+  BOOKING_COMPLETED = 'booking.completed',
+  BOOKING_CANCELLED = 'booking.cancelled',
+  BOOKING_NO_SHOW = 'booking.no_show',
+
+  // Wallet events
+  WALLET_DEPOSIT = 'wallet.deposit',
+  WALLET_WITHDRAWAL = 'wallet.withdrawal',
+  WALLET_TRANSFER = 'wallet.transfer',
+
+  // Provider events
+  PROVIDER_REGISTERED = 'provider.registered',
+  PROVIDER_UPDATED = 'provider.updated',
+
+  // User registration
+  USER_REGISTERED = 'user.registered',
 }
 
 export interface DomainEvent {
@@ -94,6 +113,43 @@ export interface AppealEventPayload {
   user_id: string;
   status: string;
   reason?: string;
+}
+
+export interface BookingEventPayload {
+  booking_id: string;
+  client_id: string;
+  provider_id: string;
+  service_category?: string;
+  amount?: number;
+  currency?: string;
+  status: string;
+  scheduled_at?: string;
+}
+
+export interface WalletEventPayload {
+  wallet_tx_id: string;
+  user_id: string;
+  counterparty_id?: string;
+  tx_type: string;
+  amount: number;
+  currency: string;
+  payment_method?: string;
+  status: string;
+}
+
+export interface ProviderEventPayload {
+  provider_id: string;
+  user_id: string;
+  service_category?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UserRegisteredPayload {
+  user_id: string;
+  external_id?: string;
+  display_name?: string;
+  email?: string;
+  user_type?: string;
 }
 
 // ─── Event Handler Type ───────────────────────────────────────

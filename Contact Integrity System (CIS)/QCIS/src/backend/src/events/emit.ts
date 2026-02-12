@@ -169,6 +169,128 @@ export async function emitAppealResolved(appeal: {
   await safeEmit(event);
 }
 
+// ─── Booking Events ─────────────────────────────────────────
+
+export async function emitBookingCreated(booking: {
+  id: string;
+  client_id: string;
+  provider_id: string;
+  service_category?: string;
+  amount?: number;
+  currency?: string;
+  status: string;
+  scheduled_at?: string;
+}): Promise<void> {
+  const event = buildEvent(EventType.BOOKING_CREATED, {
+    booking_id: booking.id,
+    client_id: booking.client_id,
+    provider_id: booking.provider_id,
+    service_category: booking.service_category,
+    amount: booking.amount,
+    currency: booking.currency,
+    status: booking.status,
+    scheduled_at: booking.scheduled_at,
+  });
+  await safeEmit(event);
+}
+
+export async function emitBookingUpdated(booking: {
+  id: string;
+  client_id: string;
+  provider_id: string;
+  service_category?: string;
+  amount?: number;
+  currency?: string;
+  status: string;
+  scheduled_at?: string;
+}): Promise<void> {
+  const event = buildEvent(EventType.BOOKING_UPDATED, {
+    booking_id: booking.id,
+    client_id: booking.client_id,
+    provider_id: booking.provider_id,
+    service_category: booking.service_category,
+    amount: booking.amount,
+    currency: booking.currency,
+    status: booking.status,
+    scheduled_at: booking.scheduled_at,
+  });
+  await safeEmit(event);
+}
+
+export async function emitBookingCompleted(booking: {
+  id: string;
+  client_id: string;
+  provider_id: string;
+  service_category?: string;
+  amount?: number;
+  currency?: string;
+  status: string;
+}): Promise<void> {
+  const event = buildEvent(EventType.BOOKING_COMPLETED, {
+    booking_id: booking.id,
+    client_id: booking.client_id,
+    provider_id: booking.provider_id,
+    service_category: booking.service_category,
+    amount: booking.amount,
+    currency: booking.currency,
+    status: booking.status,
+  });
+  await safeEmit(event);
+}
+
+export async function emitBookingCancelled(booking: {
+  id: string;
+  client_id: string;
+  provider_id: string;
+  service_category?: string;
+  amount?: number;
+  currency?: string;
+  status: string;
+}): Promise<void> {
+  const event = buildEvent(EventType.BOOKING_CANCELLED, {
+    booking_id: booking.id,
+    client_id: booking.client_id,
+    provider_id: booking.provider_id,
+    service_category: booking.service_category,
+    amount: booking.amount,
+    currency: booking.currency,
+    status: booking.status,
+  });
+  await safeEmit(event);
+}
+
+// ─── Wallet Events ──────────────────────────────────────────
+
+export async function emitWalletTransaction(tx: {
+  id: string;
+  user_id: string;
+  counterparty_id?: string;
+  tx_type: string;
+  amount: number;
+  currency: string;
+  payment_method?: string;
+  status: string;
+}): Promise<void> {
+  const txTypeToEvent: Record<string, EventType> = {
+    deposit: EventType.WALLET_DEPOSIT,
+    withdrawal: EventType.WALLET_WITHDRAWAL,
+    transfer: EventType.WALLET_TRANSFER,
+  };
+  const eventType = txTypeToEvent[tx.tx_type] || EventType.WALLET_DEPOSIT;
+
+  const event = buildEvent(eventType, {
+    wallet_tx_id: tx.id,
+    user_id: tx.user_id,
+    counterparty_id: tx.counterparty_id,
+    tx_type: tx.tx_type,
+    amount: tx.amount,
+    currency: tx.currency,
+    payment_method: tx.payment_method,
+    status: tx.status,
+  });
+  await safeEmit(event);
+}
+
 // ─── Enforcement Events ──────────────────────────────────────
 
 export async function emitEnforcementReversed(action: {

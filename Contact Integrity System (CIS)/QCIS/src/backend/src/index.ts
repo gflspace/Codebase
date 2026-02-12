@@ -34,6 +34,7 @@ import statsV2Routes from './api/routes/stats-v2';
 import aiRoutes from './api/routes/ai';
 import adminUserRoutes from './api/routes/admin-users';
 import adminRoleRoutes from './api/routes/admin-roles';
+import webhookRoutes from './api/routes/webhooks';
 
 const app = express();
 
@@ -57,6 +58,7 @@ app.use('/api/cases', writeLimiter);
 app.use('/api/appeals', writeLimiter);
 app.use('/api/enforcement-actions', writeLimiter);
 app.use('/api/admin', writeLimiter);
+app.use('/api/webhooks', writeLimiter);
 
 // Root route
 app.get('/', (_req, res) => {
@@ -92,6 +94,7 @@ app.use('/api/stats/v2', statsV2Routes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/admin/users', adminUserRoutes);
 app.use('/api/admin/roles', adminRoleRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 // Error handling
 app.use(notFound);
