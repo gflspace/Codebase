@@ -40,6 +40,7 @@ import aiRoutes from './api/routes/ai';
 import adminUserRoutes from './api/routes/admin-users';
 import adminRoleRoutes from './api/routes/admin-roles';
 import webhookRoutes from './api/routes/webhooks';
+import ratingRoutes from './api/routes/ratings';
 
 const app = express();
 
@@ -64,6 +65,7 @@ app.use('/api/appeals', writeLimiter);
 app.use('/api/enforcement-actions', writeLimiter);
 app.use('/api/admin', writeLimiter);
 app.use('/api/webhooks', writeLimiter);
+app.use('/api/ratings', writeLimiter);
 
 // Root route
 app.get('/', (_req, res) => {
@@ -100,6 +102,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/admin/users', adminUserRoutes);
 app.use('/api/admin/roles', adminRoleRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/ratings', ratingRoutes);
 
 // Error handling
 app.use(notFound);

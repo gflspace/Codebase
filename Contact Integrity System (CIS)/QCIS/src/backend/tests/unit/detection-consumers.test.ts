@@ -476,6 +476,57 @@ describe('ProviderBehaviorConsumer', () => {
     await expect(handleProviderEvent(event)).resolves.toBeUndefined();
     consoleSpy.mockRestore();
   });
+
+  it('emits PROVIDER_RATING_MANIPULATION for 5+ high ratings in 24h', async () => {
+    const { detectRatingManipulation } = await import('../../src/detection/consumers/provider-behavior');
+    // high_count → 6
+    mockQuery.mockResolvedValueOnce({ rows: [{ high_count: '6' }], rowCount: 1 });
+    // total_count → 7
+    mockQuery.mockResolvedValueOnce({ rows: [{ total_count: '7' }], rowCount: 1 });
+    // persist
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const event = buildEvent(EventType.RATING_SUBMITTED, {
+      rating_id: uuid(10), client_id: uuid(2), provider_id: uuid(3), score: 5,
+    });
+    await detectRatingManipulation(event);
+
+    const persistCall = mockQuery.mock.calls.find(
+      (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('INSERT INTO risk_signals')
+    );
+    expect(persistCall).toBeDefined();
+    expect(persistCall![1][3]).toBe(SignalType.PROVIDER_RATING_MANIPULATION);
+    // ratio = 6/7 ≈ 0.857 > 0.8 → confidence = 0.8
+    expect(persistCall![1][4]).toBeCloseTo(0.8, 2);
+  });
+
+  it('does NOT emit RATING_MANIPULATION for 3 high ratings', async () => {
+    const { detectRatingManipulation } = await import('../../src/detection/consumers/provider-behavior');
+    // high_count → 3 (below threshold of 5)
+    mockQuery.mockResolvedValueOnce({ rows: [{ high_count: '3' }], rowCount: 1 });
+
+    const event = buildEvent(EventType.RATING_SUBMITTED, {
+      rating_id: uuid(10), client_id: uuid(2), provider_id: uuid(3), score: 5,
+    });
+    await detectRatingManipulation(event);
+
+    const persistCalls = mockQuery.mock.calls.filter(
+      (c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('INSERT INTO risk_signals')
+    );
+    expect(persistCalls.length).toBe(0);
+  });
+
+  it('skips rating manipulation when no provider_id', async () => {
+    const { detectRatingManipulation } = await import('../../src/detection/consumers/provider-behavior');
+
+    const event = buildEvent(EventType.RATING_SUBMITTED, {
+      rating_id: uuid(10), client_id: uuid(2), score: 5,
+      // no provider_id
+    });
+    await detectRatingManipulation(event);
+
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
 });
 
 // ─── TemporalPattern Tests ──────────────────────────────────────

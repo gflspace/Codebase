@@ -4,7 +4,7 @@ import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { validate, validateQuery, validateParams } from '../middleware/validation';
 import { createUserSchema, updateUserSchema, uuidParam, userQuerySchema } from '../schemas';
 import { generateId } from '../../shared/utils';
-import { emitUserStatusChanged } from '../../events/emit';
+import { emitUserStatusChanged, emitContactFieldChanged } from '../../events/emit';
 
 const router = Router();
 
@@ -140,19 +140,23 @@ router.patch(
         return;
       }
 
-      // If status is being changed, fetch the previous status for the event
+      // If status/phone/email is being changed, fetch previous values for events
       let previousStatus: string | undefined;
-      if (req.body.status) {
-        const prev = await query('SELECT status FROM users WHERE id = $1', [req.params.id]);
+      let previousPhone: string | undefined;
+      let previousEmail: string | undefined;
+      if (req.body.status || req.body.phone || req.body.email) {
+        const prev = await query('SELECT status, phone, email FROM users WHERE id = $1', [req.params.id]);
         if (prev.rows.length > 0) {
           previousStatus = prev.rows[0].status;
+          previousPhone = prev.rows[0].phone;
+          previousEmail = prev.rows[0].email;
         }
       }
 
       values.push(req.params.id);
       const result = await query(
         `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex}
-         RETURNING id, external_id, display_name, email, verification_status, trust_score, status, metadata, created_at, updated_at`,
+         RETURNING id, external_id, display_name, email, phone, verification_status, trust_score, status, metadata, created_at, updated_at`,
         values
       );
 
@@ -172,6 +176,14 @@ router.patch(
           new_status: row.status,
           reason: req.body.reason,
         });
+      }
+
+      // Fire-and-forget: emit contact field change events
+      if (req.body.phone && previousPhone !== req.body.phone) {
+        emitContactFieldChanged({ user_id: row.id, field: 'phone', old_value: previousPhone, new_value: req.body.phone });
+      }
+      if (req.body.email && previousEmail !== req.body.email) {
+        emitContactFieldChanged({ user_id: row.id, field: 'email', old_value: previousEmail, new_value: req.body.email });
       }
     } catch (error) {
       console.error('Update user error:', error);

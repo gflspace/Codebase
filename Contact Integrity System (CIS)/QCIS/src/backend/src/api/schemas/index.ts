@@ -25,6 +25,8 @@ export const eventSchema = z.object({
     'wallet.deposit', 'wallet.withdrawal', 'wallet.transfer',
     'provider.registered', 'provider.updated',
     'user.registered',
+    'user.contact_field_changed',
+    'rating.submitted',
   ]),
   correlation_id: z.string().uuid().optional(),
   timestamp: z.string().datetime().optional(),
@@ -49,6 +51,8 @@ export const createUserSchema = z.object({
 
 export const updateUserSchema = z.object({
   display_name: z.string().max(255).optional(),
+  phone: z.string().max(50).optional(),
+  email: z.string().email().max(255).optional(),
   verification_status: z.enum(['unverified', 'pending', 'verified']).optional(),
   status: z.enum(['active', 'restricted', 'suspended', 'banned']).optional(),
   metadata: z.record(z.unknown()).optional(),
@@ -99,6 +103,19 @@ export const riskSignalSchema = z.object({
     'BOOKING_CANCEL_PATTERN', 'BOOKING_NO_SHOW_PATTERN',
     'WALLET_VELOCITY_SPIKE', 'WALLET_SPLIT_PATTERN',
     'PROVIDER_RATING_DROP', 'PROVIDER_COMPLAINT_CLUSTER',
+    // Phase 2C — Booking (5)
+    'BOOKING_RAPID_CANCELLATION', 'BOOKING_FAKE_COMPLETION', 'BOOKING_SAME_PROVIDER_REPEAT',
+    'BOOKING_TIME_CLUSTERING', 'BOOKING_VALUE_ANOMALY',
+    // Phase 2C — Payment (5)
+    'PAYMENT_CIRCULAR', 'PAYMENT_RAPID_TOPUP', 'PAYMENT_SPLIT_TRANSACTION',
+    'PAYMENT_METHOD_SWITCHING', 'PAYMENT_WITHDRAWAL_SPIKE',
+    // Phase 2C — Provider (4)
+    'PROVIDER_DUPLICATE_IDENTITY', 'PROVIDER_RESPONSE_DEGRADATION',
+    'PROVIDER_RATING_MANIPULATION', 'PROVIDER_CANCELLATION_SPIKE',
+    // Phase 2C — Temporal (2)
+    'TEMPORAL_BURST_ACTIVITY', 'TEMPORAL_DORMANT_ACTIVATION',
+    // Phase 2C — Contact (2)
+    'CONTACT_PHONE_CHANGED', 'CONTACT_EMAIL_CHANGED',
   ]),
   confidence: z.number().min(0).max(1),
   evidence: z.object({
@@ -278,4 +295,21 @@ export const updateAdminSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   new_password: z.string().min(8).max(128),
+});
+
+// ─── Ratings ────────────────────────────────────────────────
+
+export const createRatingSchema = z.object({
+  client_id: z.string().uuid(),
+  provider_id: z.string().uuid(),
+  booking_id: z.string().uuid().optional(),
+  score: z.number().int().min(1).max(5),
+  comment: z.string().max(2000).optional(),
+});
+
+export const ratingQuerySchema = paginationQuery.extend({
+  provider_id: z.string().uuid().optional(),
+  client_id: z.string().uuid().optional(),
+  min_score: z.coerce.number().int().min(1).max(5).optional(),
+  max_score: z.coerce.number().int().min(1).max(5).optional(),
 });

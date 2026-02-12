@@ -3,6 +3,7 @@
 import { DashboardFilterProvider } from '@/contexts/DashboardFilterContext';
 import GlobalControlsBar from './GlobalControlsBar';
 import ExecutiveSummary from './ExecutiveSummary';
+import SignalBreakdown from './SignalBreakdown';
 import ActivityTimeline from './ActivityTimeline';
 
 export default function IntelligenceDashboard() {
@@ -18,6 +19,7 @@ export default function IntelligenceDashboard() {
           <p className="text-sm text-gray-400 mb-6">Real-time behavioral intelligence and early-warning signals.</p>
 
           <ExecutiveSummary />
+          <SignalBreakdown />
           <ActivityTimeline />
         </div>
       </div>

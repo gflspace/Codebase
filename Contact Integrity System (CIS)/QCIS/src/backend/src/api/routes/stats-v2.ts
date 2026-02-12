@@ -388,4 +388,118 @@ router.get(
   }
 );
 
+// ─── Signal Domain Mapping ───────────────────────────────────
+
+const SIGNAL_DOMAINS: Record<string, string[]> = {
+  off_platform: [
+    'OFF_PLATFORM_INTENT', 'PAYMENT_EXTERNAL', 'CONTACT_PHONE', 'CONTACT_EMAIL',
+    'CONTACT_SOCIAL', 'CONTACT_MESSAGING_APP', 'GROOMING_LANGUAGE',
+  ],
+  transaction: [
+    'TX_REDIRECT_ATTEMPT', 'TX_FAILURE_CORRELATED', 'TX_TIMING_ALIGNMENT',
+  ],
+  booking: [
+    'BOOKING_CANCEL_PATTERN', 'BOOKING_NO_SHOW_PATTERN', 'BOOKING_RAPID_CANCELLATION',
+    'BOOKING_FAKE_COMPLETION', 'BOOKING_SAME_PROVIDER_REPEAT', 'BOOKING_TIME_CLUSTERING',
+    'BOOKING_VALUE_ANOMALY',
+  ],
+  payment: [
+    'WALLET_VELOCITY_SPIKE', 'WALLET_SPLIT_PATTERN', 'PAYMENT_CIRCULAR',
+    'PAYMENT_RAPID_TOPUP', 'PAYMENT_SPLIT_TRANSACTION', 'PAYMENT_METHOD_SWITCHING',
+    'PAYMENT_WITHDRAWAL_SPIKE',
+  ],
+  provider: [
+    'PROVIDER_RATING_DROP', 'PROVIDER_COMPLAINT_CLUSTER', 'PROVIDER_DUPLICATE_IDENTITY',
+    'PROVIDER_RESPONSE_DEGRADATION', 'PROVIDER_RATING_MANIPULATION', 'PROVIDER_CANCELLATION_SPIKE',
+  ],
+  behavioral: [
+    'TEMPORAL_BURST_ACTIVITY', 'TEMPORAL_DORMANT_ACTIVATION',
+    'CONTACT_PHONE_CHANGED', 'CONTACT_EMAIL_CHANGED',
+  ],
+};
+
+// Reverse lookup: signal_type → domain
+const SIGNAL_TO_DOMAIN: Record<string, string> = {};
+for (const [domain, types] of Object.entries(SIGNAL_DOMAINS)) {
+  for (const t of types) {
+    SIGNAL_TO_DOMAIN[t] = domain;
+  }
+}
+
+// ─── GET /api/stats/v2/signal-breakdown ──────────────────────
+
+router.get(
+  '/signal-breakdown',
+  authenticateJWT,
+  requirePermission('intelligence.view'),
+  async (req: Request, res: Response) => {
+    try {
+      const filters = parseFilters(req);
+      const { interval, bucket } = filters;
+
+      // Two queries in parallel: counts by type, time-series by type
+      const [countRows, tsRows] = await Promise.all([
+        query(
+          `SELECT signal_type, COUNT(*) AS cnt
+           FROM risk_signals
+           WHERE created_at > NOW() - INTERVAL '${interval}'
+           GROUP BY signal_type`
+        ),
+        query(
+          `SELECT DATE_TRUNC('${bucket}', created_at) AS ts, signal_type, COUNT(*) AS cnt
+           FROM risk_signals
+           WHERE created_at > NOW() - INTERVAL '${interval}'
+           GROUP BY ts, signal_type
+           ORDER BY ts`
+        ),
+      ]);
+
+      // Build domain counts
+      const domains: Record<string, { total: number; types: Record<string, number> }> = {};
+      for (const domain of Object.keys(SIGNAL_DOMAINS)) {
+        domains[domain] = { total: 0, types: {} };
+      }
+      for (const row of countRows.rows) {
+        const domain = SIGNAL_TO_DOMAIN[row.signal_type];
+        if (domain && domains[domain]) {
+          const cnt = parseInt(row.cnt, 10);
+          domains[domain].types[row.signal_type] = cnt;
+          domains[domain].total += cnt;
+        }
+      }
+
+      // Build time-series per domain
+      const timeSeries: Record<string, Array<{ timestamp: string; count: number }>> = {};
+      for (const domain of Object.keys(SIGNAL_DOMAINS)) {
+        timeSeries[domain] = [];
+      }
+      // Aggregate by timestamp+domain
+      const tsMap = new Map<string, Map<string, number>>();
+      for (const row of tsRows.rows) {
+        const ts = row.ts instanceof Date ? row.ts.toISOString() : String(row.ts);
+        const domain = SIGNAL_TO_DOMAIN[row.signal_type];
+        if (!domain) continue;
+        if (!tsMap.has(ts)) tsMap.set(ts, new Map());
+        const domainMap = tsMap.get(ts)!;
+        domainMap.set(domain, (domainMap.get(domain) || 0) + parseInt(row.cnt, 10));
+      }
+      // Convert to arrays
+      const sortedTimestamps = [...tsMap.keys()].sort();
+      for (const ts of sortedTimestamps) {
+        const domainMap = tsMap.get(ts)!;
+        for (const [domain, count] of domainMap) {
+          timeSeries[domain].push({ timestamp: ts, count });
+        }
+      }
+
+      res.json({
+        data: { domains, timeSeries },
+      });
+    } catch (error) {
+      console.error('Stats v2 signal-breakdown error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
 export default router;

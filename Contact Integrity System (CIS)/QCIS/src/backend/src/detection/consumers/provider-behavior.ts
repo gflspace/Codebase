@@ -148,31 +148,37 @@ async function detectCancellationSpike(
 async function detectRatingManipulation(
   event: DomainEvent
 ): Promise<void> {
-  // Phase 2D dependency: Requires RATING_SUBMITTED event and rating data.
-  // Wired but will not fire until a rating submission route exists.
   const payload = event.payload as Record<string, unknown>;
   const providerId = payload.provider_id as string | undefined;
   if (!providerId) return;
 
   try {
-    // Check for suspiciously clustered high ratings in a short window
     const result = await query(
       `SELECT COUNT(*) AS high_count
-       FROM provider_performance_metrics
-       WHERE provider_id = $1
-         AND metric_name = 'rating'
-         AND metric_value >= 4.5
-         AND recorded_at >= NOW() - INTERVAL '24 hours'`,
+       FROM ratings
+       WHERE provider_id = $1 AND score >= 5
+         AND created_at >= NOW() - INTERVAL '24 hours'`,
       [providerId]
     );
-    const count = parseInt(result.rows[0]?.high_count ?? '0', 10);
-    if (count >= 5) {
-      await persistSignal(event.id, providerId, {
-        signal_type: SignalType.PROVIDER_RATING_MANIPULATION,
-        confidence: 0.7,
-        evidence: { provider_id: providerId, high_ratings_24h: count },
-      });
-    }
+    const highCount = parseInt(result.rows[0]?.high_count ?? '0', 10);
+    if (highCount < 5) return;
+
+    const totalResult = await query(
+      `SELECT COUNT(*) AS total_count
+       FROM ratings
+       WHERE provider_id = $1
+         AND created_at >= NOW() - INTERVAL '24 hours'`,
+      [providerId]
+    );
+    const totalCount = parseInt(totalResult.rows[0]?.total_count ?? '0', 10);
+    const ratio = totalCount > 0 ? highCount / totalCount : 0;
+    const confidence = ratio > 0.8 ? 0.8 : 0.7;
+
+    await persistSignal(event.id, providerId, {
+      signal_type: SignalType.PROVIDER_RATING_MANIPULATION,
+      confidence,
+      evidence: { provider_id: providerId, high_ratings_24h: highCount, total_ratings_24h: totalCount, high_ratio: Math.round(ratio * 1000) / 1000 },
+    });
   } catch (err) {
     console.error('[ProviderBehavior] detectRatingManipulation error:', err);
   }

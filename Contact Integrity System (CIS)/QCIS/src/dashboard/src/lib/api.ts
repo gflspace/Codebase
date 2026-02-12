@@ -271,3 +271,20 @@ export const resetAdminPassword = (token: string, id: string, newPassword: strin
 
 export const getAdminRoles = (token: string) =>
   request<{ data: { roles: RoleData[]; permissions: PermissionData[] } }>('/admin/roles', { token });
+
+// ─── Signal Breakdown (Phase 2D) ────────────────────────────────
+
+export interface SignalDomainCount {
+  total: number;
+  types: Record<string, number>;
+}
+
+export interface SignalBreakdownData {
+  domains: Record<string, SignalDomainCount>;
+  timeSeries: Record<string, Array<{ timestamp: string; count: number }>>;
+}
+
+export const getSignalBreakdown = (token: string, params: Record<string, string>) => {
+  const qs = '?' + new URLSearchParams(params).toString();
+  return request<{ data: SignalBreakdownData }>(`/stats/v2/signal-breakdown${qs}`, { token });
+};
