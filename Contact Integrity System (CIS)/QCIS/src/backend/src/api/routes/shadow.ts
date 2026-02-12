@@ -27,7 +27,7 @@ router.get(
       ]);
 
       const bus = getEventBus();
-      const dlq = bus.getDeadLetterQueue();
+      const dlq = await bus.getDeadLetterQueue();
 
       res.json({
         shadow_mode: config.shadowMode,
