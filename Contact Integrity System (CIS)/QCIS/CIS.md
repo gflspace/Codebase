@@ -1,9 +1,10 @@
 # QwickServices Contact Integrity System (CIS) — Complete System Reconstruction
 
 > **Status:** Authoritative Living System Document
-> **Generated:** 2026-02-12
+> **Generated:** 2026-02-12 | **Updated:** 2026-02-12
 > **Method:** Full codebase audit — 30 architecture documents + 40+ source files cross-referenced
 > **Scope:** End-to-end system reconstruction from documentation and implemented code
+> **Revision:** Phase 2 deep audit — API schemas, middleware, event emission, dashboard internals, test infrastructure
 
 ---
 
@@ -125,9 +126,10 @@ src/backend/
 │   └── shared/
 │       └── utils.ts                    # ID generation, date helpers
 ├── tests/
-│   ├── unit/ (7 test files)            # 120 tests total
-│   ├── integration/ (1 test file)
-│   └── fixtures/
+│   ├── unit/ (7 test files)            # 120 tests total (6 detection/scoring/enforcement + 1 durable bus)
+│   ├── integration/ (1 test file)      # auth.test.ts (15 tests: JWT, RBAC, lockout)
+│   ├── helpers/                        # Shared test setup (mocks, token gen, server factory)
+│   └── fixtures/                       # simulation-corpus.ts (37 messages)
 ├── Dockerfile                           # Multi-stage build, non-root
 ├── package.json
 └── tsconfig.json
@@ -349,6 +351,79 @@ CIS_Trust(u) = 0.30 × Operational + 0.40 × Behavioral + 0.30 × Network
 - GlobalControlsBar: Time range, granularity, entity type, category, risk level filters
 - ActivityTimeline: Stacked area chart with layer toggles
 
+### 5.5 Dashboard Component Architecture
+
+#### Authentication Flow (LoginPage.tsx → layout.tsx)
+
+```
+1. User submits email + password → api.login()
+2. Backend validates credentials → returns { token, user }
+3. If user.force_password_change === true:
+   a. LoginPage shows password change form
+   b. Validates: ≥ 8 chars, confirmation match
+   c. Calls api.resetAdminPassword() → re-authenticates
+4. Token + user persisted to localStorage (cis_token, cis_user)
+5. AuthContext.Provider wraps entire app
+6. On bootstrap: decodes JWT exp claim, auto-logouts if expired
+7. API client dispatches 'cis-auth-expired' custom event on 401 → layout listener clears auth
+```
+
+#### Auth Context & Permission System (lib/auth.ts)
+
+```typescript
+// Context interface
+interface AuthState { user: AuthUser | null; token: string | null; isAuthenticated: boolean; }
+interface AuthUser { id, email, name, role, permissions: string[], force_password_change?: boolean }
+
+// Hooks
+useAuth()                         → { auth, login, logout }
+usePermission(...perms: string[]) → boolean  // memoized check
+hasPermission(user, ...perms)     → boolean  // user.permissions includes ALL specified
+```
+
+#### Module Routing (Dashboard.tsx)
+
+The dashboard uses a single-page architecture with a sidebar and a main content area. Module visibility is controlled by permission checks.
+
+| Module | Component | Required Permission | Data Source |
+|--------|-----------|-------------------|------------|
+| Intelligence Dashboard | `IntelligenceDashboard` | `intelligence.view` | `/api/stats/v2/kpi`, `/api/stats/v2/timeline` |
+| Overview | `OverviewDashboard` | `overview.view` | `/api/stats/overview` |
+| Categories | `CategoryDashboard` | `category.view` | `/api/stats/categories` |
+| Alerts & Inbox | `AlertsInbox` | `alerts.view` | `/api/alerts` |
+| Case Investigation | `CaseInvestigation` | `cases.view` | `/api/cases`, `/api/cases/:id` |
+| Enforcement | `EnforcementManagement` | `enforcement.view` | `/api/enforcement-actions` |
+| Risk & Trends | `RiskTrends` | `risk.view` | `/api/risk-scores` |
+| Appeals | `AppealsModule` | `appeals.view` | `/api/appeals` |
+| System Health | `SystemHealth` | `system_health.view` | `/api/health` (30s polling) |
+| Audit Logs | `AuditLogsModule` | `audit_logs.view` | `/api/audit-logs` |
+| Settings | `SettingsModule` | `settings.view` | `/api/admin/users`, `/api/admin/roles` |
+
+#### Dashboard Sidebar Features
+
+- **Service Category Filter** (collapsible): All, Cleaning, Plumbing, Electrical, Moving, Tutoring, Handyman, Landscaping, Pet Care, Auto Repair, Personal Training
+- **User info display**: Name, formatted role
+- **Logout button**: Clears localStorage, resets AuthContext
+- **Module navigation**: Active state tracking, permission-gated visibility
+
+#### API Client (lib/api.ts — 274 lines, 25+ endpoint groups)
+
+Centralized fetch wrapper with:
+- Automatic `Authorization: Bearer <token>` injection
+- 401 detection → dispatches `cis-auth-expired` custom event
+- Base URL configurable via `NEXT_PUBLIC_API_URL` (defaults to `/api`)
+- Generic error message fallback on network/parse failures
+
+#### Dashboard Configuration
+
+| Setting | Value |
+|---------|-------|
+| Output Mode | Static export (`next build` → HTML/CSS/JS) |
+| React Strict Mode | Enabled |
+| Trailing Slashes | Enabled |
+| CSS Framework | Tailwind CSS with CIS theme variables |
+| Theme Colors | `--cis-green: #32A402`, `--cis-orange: #ffa500`, `--cis-red: #ff0000` + soft variants |
+
 ---
 
 ## 6. APIs & Integrations
@@ -396,6 +471,174 @@ CIS_Trust(u) = 0.30 × Operational + 0.40 × Behavioral + 0.30 × Network
 | Sidebase (QwickServices Platform) | Designed, not connected | Live event source (messages, transactions) |
 | OpenAI API | Implemented with fallback | Risk summaries, appeal analysis, pattern detection |
 | Stripe (via Sidebase) | Observed indirectly | Platform payment processing (escrow model) |
+
+### 6.4 Middleware Stack (execution order in index.ts)
+
+```
+1. helmet()                              — Security headers (XSS, HSTS, sniffing)
+2. cors({ origin: [dashboard, api] })    — CORS whitelist
+3. express.json({ limit: '1mb' })        — Body parser
+4. globalLimiter → /api/*                — 100 req/min per IP (skips /health)
+5. aiLimiter → /api/ai/*                 — 10 req/min per IP
+6. writeLimiter → /api/users, messages,  — 30 req/min per IP (skips GET)
+     transactions, events, alerts, cases,
+     appeals, enforcement-actions, admin
+7. [Route-level middleware]:
+   a. authenticateJWT                    — Validates Bearer token, populates req.adminUser
+   b. requirePermission(...)             — Checks req.adminUser.permissions has ALL required
+   c. validateParams / validateQuery     — Zod schema on req.params / req.query
+   d. validate                           — Zod schema on req.body
+   e. Route handler (async)
+8. notFound                              — 404 for unmatched routes
+9. errorHandler                          — Global error catch (500 with safe message)
+```
+
+### 6.5 Zod Validation Schemas (src/backend/src/api/schemas/index.ts)
+
+| Schema | Purpose | Key Validations |
+|--------|---------|-----------------|
+| `uuidParam` | Path parameter validation | `id: z.string().uuid()` |
+| `paginationQuery` | Pagination query params | `page: int ≥1`, `limit: int 1-100 (default 20)` |
+| `eventSchema` | Event ingestion | `type: enum(12 types)`, `payload: record`, `version: int` |
+| `loginSchema` | Auth login | `email: z.email()`, `password: z.string().min(8)` |
+| `createUserSchema` | User creation | `external_id`, `display_name`, `email`, `metadata` (all optional) |
+| `updateUserSchema` | User update | `display_name`, `verification_status`, `status`, `metadata` |
+| `createMessageSchema` | Message creation | `sender_id: uuid`, `receiver_id: uuid`, `content: min(1) max(10000)` |
+| `messageQuerySchema` | Message filters | `sender_id`, `receiver_id`, `conversation_id` (all optional UUID) |
+| `createTransactionSchema` | Transaction creation | `user_id: uuid`, `amount: positive`, `currency: 3 chars` |
+| `updateTransactionSchema` | Status change | `status: enum(initiated,completed,failed,cancelled)` |
+| `riskSignalSchema` | Signal creation | `signal_type: enum(10)`, `confidence: 0-1`, `evidence: { message_ids[], timestamps[] }` |
+| `signalQuerySchema` | Signal filters | `user_id`, `signal_type`, `min_confidence: 0-1` |
+| `riskScoreQuerySchema` | Score filters | `user_id`, `tier: enum(5)`, `min_score: 0-100`, `category` |
+| `enforcementQuerySchema` | Enforcement filters | `user_id`, `action_type: enum(5)`, `active_only: bool`, `category` |
+| `auditLogQuerySchema` | Audit log filters | `actor`, `action`, `entity_type`, `entity_id`, `from/to: datetime` |
+| `alertQuerySchema` | Alert filters | `status: enum(5)`, `priority: enum(4)`, `assigned_to`, `category`, `user_type` |
+| `updateAlertSchema` | Alert update | `status: enum(5)`, `assigned_to: uuid|null`, `priority: enum(4)` |
+| `createCaseSchema` | Case creation | `user_id: uuid`, `title: max(500)`, `description`, `alert_ids: uuid[]` |
+| `updateCaseSchema` | Case update | `status: enum(5)`, `assigned_to`, `title`, `description` |
+| `addCaseNoteSchema` | Case note | `content: min(1)` |
+| `createAppealSchema` | Appeal creation | `enforcement_action_id: uuid`, `user_id: uuid`, `reason: min(1)` |
+| `resolveAppealSchema` | Appeal resolution | `status: enum(approved,denied)`, `resolution_notes: min(1)` |
+| `createAdminSchema` | Admin creation | `email`, `name`, `password: min(8)`, `role: enum(10)`, `permission_overrides[]` |
+| `updateAdminSchema` | Admin update | `name`, `role: enum(10)`, `active: bool`, `permission_overrides[]` |
+| `resetPasswordSchema` | Password reset | `new_password: min(8) max(128)` |
+
+### 6.6 Detailed Route Specifications
+
+#### Auth Routes (`/api/auth`)
+
+| Endpoint | Auth | Permission | Request | Response | Side Effects |
+|----------|------|------------|---------|----------|-------------|
+| `POST /login` | None | None | `{ email, password }` | `{ token, user: { id, email, name, role, permissions, force_password_change } }` | IP rate limit (10/15min), failed login counter (5 → 15min lockout), bcrypt/SHA256 dual support with auto-migration |
+| `GET /me` | JWT | Any | — | `{ user: req.adminUser }` | — |
+
+#### User Routes (`/api/users`)
+
+| Endpoint | Permission | Query/Body | Response Shape |
+|----------|------------|------------|----------------|
+| `GET /` | `overview.view` | `?user_type&service_category&status&page&limit` | `{ data: user[], pagination }` |
+| `GET /:id` | `overview.view` | — | `{ data: user }` (404 if not found) |
+| `POST /` | `overview.view` | `{ external_id?, display_name?, email?, metadata? }` | `{ data: user }` (201) |
+| `PATCH /:id` | `overview.view` | `{ display_name?, verification_status?, status?, metadata? }` | `{ data: user }` — emits `USER_STATUS_CHANGED` if status changed |
+
+#### Message Routes (`/api/messages`)
+
+| Endpoint | Permission | Query/Body | Response Shape |
+|----------|------------|------------|----------------|
+| `GET /` | `messages.view` | `?sender_id&receiver_id&conversation_id&page&limit` | `{ data: message[], pagination }` |
+| `GET /:id` | `messages.view` | — | `{ data: message }` |
+| `POST /` | `messages.view` | `{ sender_id, receiver_id, conversation_id?, content, metadata? }` | `{ data: message }` (201) — emits `MESSAGE_CREATED` |
+
+#### Transaction Routes (`/api/transactions`)
+
+| Endpoint | Permission | Query/Body | Response Shape |
+|----------|------------|------------|----------------|
+| `GET /` | `overview.view` | `?user_id&status&page&limit` | `{ data: transaction[], pagination }` |
+| `GET /:id` | `overview.view` | — | `{ data: transaction }` |
+| `POST /` | `overview.view` | `{ user_id, counterparty_id?, amount, currency?, payment_method?, external_ref?, metadata? }` | `{ data: transaction }` (201) — emits `TRANSACTION_INITIATED` |
+| `PATCH /:id` | `overview.view` | `{ status }` | `{ data: transaction }` — emits `TRANSACTION_COMPLETED/FAILED/CANCELLED` |
+
+#### Risk Signal Routes (`/api/risk-signals`)
+
+| Endpoint | Permission | Query/Body | Response Shape |
+|----------|------------|------------|----------------|
+| `GET /` | `risk.view` | `?user_id&signal_type&min_confidence&page&limit` | `{ data: signal[], pagination }` |
+| `GET /:id` | `risk.view` | — | `{ data: signal }` |
+| `POST /` | `risk.view` | `{ source_event_id, user_id?, signal_type, confidence, evidence, obfuscation_flags, pattern_flags }` | `{ data: signal }` (201) |
+
+#### Risk Score Routes (`/api/risk-scores`)
+
+| Endpoint | Permission | Query/Body | Response Shape |
+|----------|------------|------------|----------------|
+| `GET /` | `risk.view` | `?user_id&tier&min_score&category&page&limit` | `{ data: score[] + user joins, pagination }` |
+| `GET /user/:id` | `risk.view` | — | `{ data: latest_score }` (404 if no score) |
+| `GET /:id` | `risk.view` | — | `{ data: score }` |
+
+#### Enforcement Action Routes (`/api/enforcement-actions`)
+
+| Endpoint | Permission | Query/Body | Response Shape |
+|----------|------------|------------|----------------|
+| `GET /` | `enforcement.view` | `?user_id&action_type&active_only&category&page&limit` | `{ data: action[] + user joins, pagination }` |
+| `GET /:id` | `enforcement.view` | — | `{ data: action + user join }` |
+| `POST /:id/reverse` | `enforcement.reverse` | `{ reason }` (required) | `{ data: reversed_action }` — emits `ENFORCEMENT_ACTION_REVERSED` |
+
+#### Alert Routes (`/api/alerts`)
+
+| Endpoint | Permission | Query/Body | Response Shape |
+|----------|------------|------------|----------------|
+| `GET /` | `alerts.view` | `?status&priority&assigned_to&category&user_type&page&limit` | `{ data: alert[] + user joins, pagination }` (sorted: critical > high > medium > low) |
+| `GET /:id` | `alerts.view` | — | `{ data: alert + user join }` |
+| `PATCH /:id` | `alerts.action` | `{ status?, assigned_to?, priority? }` | `{ data: alert }` |
+
+#### Case Routes (`/api/cases`)
+
+| Endpoint | Permission | Query/Body | Response Shape |
+|----------|------------|------------|----------------|
+| `GET /` | `cases.view` | `?status&category&user_type&page&limit` | `{ data: case[] + user joins, pagination }` |
+| `GET /:id` | `cases.view` | — | `{ data: { ...case, notes: case_note[] } }` |
+| `POST /` | `cases.create` | `{ user_id, title, description?, alert_ids }` | `{ data: case }` (201) — auto-assigns to current admin |
+| `PATCH /:id` | `cases.action` | `{ status?, assigned_to?, title?, description? }` | `{ data: case }` |
+| `POST /:id/notes` | `cases.action` | `{ content }` | `{ data: case_note }` (201) — author = current admin email |
+
+#### Appeal Routes (`/api/appeals`)
+
+| Endpoint | Permission | Query/Body | Response Shape |
+|----------|------------|------------|----------------|
+| `GET /` | `appeals.view` | `?status&category&page&limit` | `{ data: appeal[] + enforcement + user joins, pagination }` |
+| `POST /` | `appeals.view` | `{ enforcement_action_id, user_id, reason }` | `{ data: appeal }` (201) — validates action exists, not reversed, no pending appeal (409) — emits `APPEAL_SUBMITTED` |
+| `POST /:id/resolve` | `appeals.resolve` | `{ status: approved|denied, resolution_notes }` | `{ data: appeal }` — **if approved:** reverses enforcement, restores user status (if restricted/suspended), writes audit log — emits `APPEAL_RESOLVED` |
+
+#### Admin User Routes (`/api/admin/users`)
+
+| Endpoint | Permission | Query/Body | Response Shape |
+|----------|------------|------------|----------------|
+| `GET /` | `settings.manage_admins` | — | `{ data: admin[] + permissions + action_count_30d }` |
+| `GET /:id` | `settings.manage_admins` | — | `{ data: { ...admin, permissions, permission_overrides } }` |
+| `POST /` | `settings.manage_admins` | `{ email, name, password, role, force_password_change?, permission_overrides? }` | `{ data: admin + permissions }` (201) — super_admin creation restricted to super_admin, 409 on duplicate email, writes audit log |
+| `PATCH /:id` | `settings.manage_admins` | `{ name?, role?, active?, permission_overrides? }` | `{ data: admin + permissions }` — prevents self-deactivation, super_admin promotion restricted, replaces all overrides on update |
+| `POST /:id/reset-password` | `settings.manage_admins` | `{ new_password }` | `{ data: { message, admin } }` — sets force_password_change=true, writes audit log |
+
+### 6.7 Event Emission System (src/backend/src/events/emit.ts)
+
+All CRUD routes that modify state emit fire-and-forget domain events via `safeEmit()`. Errors are logged but never block the HTTP response.
+
+| Helper Function | Triggered By | Event Type | Key Payload Fields |
+|----------------|-------------|-----------|-------------------|
+| `emitMessageCreated()` | `POST /messages` | `message.created` | message_id, sender_id, receiver_id, content |
+| `emitMessageEdited()` | (future) | `message.edited` | message_id, content, previous_content |
+| `emitTransactionInitiated()` | `POST /transactions` | `transaction.initiated` | transaction_id, user_id, amount, currency, status |
+| `emitTransactionStatusChanged()` | `PATCH /transactions/:id` | `transaction.completed/failed/cancelled` | transaction_id, user_id, status |
+| `emitUserStatusChanged()` | `PATCH /users/:id` (when status changes) | `user.status_changed` | user_id, previous_status, new_status, reason |
+| `emitAppealSubmitted()` | `POST /appeals` | `appeal.submitted` | appeal_id, enforcement_action_id, user_id |
+| `emitAppealResolved()` | `POST /appeals/:id/resolve` | `appeal.resolved` | appeal_id, status, resolution_notes |
+| `emitEnforcementReversed()` | `POST /enforcement-actions/:id/reverse` | `enforcement.action_reversed` | action_id, user_id, action_type, reversal_reason |
+
+**Event Construction Pattern:**
+```typescript
+function buildEvent(type: EventType, payload: Record<string, unknown>): DomainEvent {
+  return { id: generateId(), type, correlation_id: generateId(), timestamp: nowISO(), version: 1, payload };
+}
+```
 
 ---
 
@@ -507,6 +750,98 @@ RLS policies enforced on `messages`, `risk_signals`, and `audit_logs` tables, sc
 | Auth integration | 15 tests | Covered |
 | **Total** | **120 tests** | **All passing** |
 
+### 8.4 Test Infrastructure
+
+#### Backend Test Framework (Vitest)
+
+**Configuration** (`src/backend/vitest.config.ts`):
+```typescript
+{
+  globals: true,           // describe/it/expect without imports
+  environment: 'node',     // Node.js test environment
+  include: ['tests/**/*.test.ts'],
+  coverage: { provider: 'v8', reporter: ['text', 'lcov'] }
+}
+```
+
+**Scripts** (`src/backend/package.json`):
+- `npm run test` → `vitest run` (single run)
+- `npm run test:watch` → `vitest` (watch mode)
+
+#### Test File Inventory
+
+**Unit Tests:**
+
+| File | Tests | What It Covers |
+|------|-------|---------------|
+| `tests/unit/detection-regex.test.ts` | 14 | Phone (3 formats), email (3), URL (3), social handles (3) |
+| `tests/unit/detection-keywords.test.ts` | 11 | Messaging apps (30 keywords), payments (29), off-platform intent (24), grooming (22) |
+| `tests/unit/obfuscation.test.ts` | 6 | Spaced characters, emoji substitution, leetspeak, character separators |
+| `tests/unit/scoring.test.ts` | 22 | 3-layer weighted formula, tier assignment, trend detection, 14-day time decay |
+| `tests/unit/enforcement.test.ts` | 11 | Trigger evaluation across all 5 risk tiers, graduated enforcement ladder |
+| `tests/unit/durable-bus.test.ts` | 11 | Consumer dispatch, wildcards, DLQ persistence, retry logic, idempotency |
+
+**Integration Tests:**
+
+| File | Tests | What It Covers |
+|------|-------|---------------|
+| `tests/integration/auth.test.ts` | 15 | JWT validation (missing/malformed/expired/wrong secret/valid), permission enforcement (missing/partial/full), token generation, permission resolution with overrides, account lockout (locked/deactivated) |
+
+**Test Fixtures:**
+
+| File | Purpose |
+|------|---------|
+| `tests/fixtures/simulation-corpus.ts` | 37 corpus messages across 5 categories: clean (10), single-signal violations (7), obfuscated (6), escalation sequences (3), multi-signal (2) |
+
+#### Auth Integration Test Pattern (reference for GAP-06)
+
+The existing `auth.test.ts` establishes the pattern for all API integration tests:
+
+```typescript
+// 1. Module-level mocks (before imports)
+vi.mock('../../src/database/connection', () => ({ query: mockQuery, ... }));
+vi.mock('../../src/config', () => ({ config: { ... } }));
+
+// 2. Import modules under test
+import { authenticateJWT, generateToken } from '../../src/api/middleware/auth';
+
+// 3. Create mock helpers
+function mockReq(overrides) { return { headers: {}, body: {}, ... } as Request; }
+function mockRes() { return { _status: 200, _json: null, status(code) {...}, json(data) {...} }; }
+
+// 4. For HTTP tests: spin up temp Express server
+const app = express(); app.use(route);
+const server = app.listen(0); const port = (server.address() as { port: number }).port;
+const res = await fetch(`http://127.0.0.1:${port}/...`);
+server.close();
+```
+
+#### Dashboard E2E Test Framework (Playwright)
+
+**Configuration** (`src/dashboard/playwright.config.ts`):
+```typescript
+{
+  testDir: './tests/e2e',
+  timeout: 30000,
+  use: { baseURL: process.env.DASHBOARD_URL || 'http://localhost:3000', trace: 'on-first-retry' },
+  webServer: { command: 'npm run dev', port: 3000, reuseExistingServer: true }
+}
+```
+
+**Scripts** (`src/dashboard/package.json`):
+- `npm run test:e2e` → `playwright test`
+
+**Current E2E State:**
+
+| Test Suite | Tests | Status |
+|-----------|-------|--------|
+| Authentication | 3 (login page visibility, valid login, invalid login) | Partially implemented |
+| RBAC | 2 (ops role restrictions, legal role access) | Stubbed |
+| Alert Triage | 2 (claim alert, dismiss alert) | Stubbed |
+| Case Investigation | 2 (view details, add notes) | Stubbed |
+| Enforcement | 2 (reversal justification, confirmation modal) | Stubbed |
+| Appeal Resolution | 2 (resolution options, approval cascade) | Stubbed |
+
 ---
 
 ## 9. Placeholders, Gaps & TODOs
@@ -521,15 +856,107 @@ RLS policies enforced on `messages`, `risk_signals`, and `audit_logs` tables, sc
 
 ### 9.2 Gap Remediation Roadmap
 
-See `GAP_REMEDIATION_ROADMAP.md` for the full 17-gap, 5-phase remediation plan. Summary:
+See `GAP_REMEDIATION_ROADMAP.md` for the full 17-gap, 5-phase remediation plan.
 
 | Phase | Gaps | Status |
 |-------|------|--------|
-| Phase 1: Production Hardening | Durable bus, graceful shutdown, rate limiting, infrastructure | **COMPLETE** |
-| Phase 2: Test Coverage | API integration tests, event bus tests, E2E tests | Pending |
+| Phase 1: Production Hardening | Durable bus, graceful shutdown, rate limiting, infrastructure | **COMPLETE** (commit `a9dd303`) |
+| Phase 2: Test Coverage | API integration tests, event bus tests, E2E tests | **IN PROGRESS** |
 | Phase 3: Shadow Mode | Sidebase integration, shadow deployment, structured logging | Pending |
 | Phase 4: Feature Completeness | Network scoring stubs, NLP detection, active enforcement | Pending |
 | Phase 5: Operational Excellence | Accessibility, data export, caching, telemetry | Pending |
+
+### 9.3 Phase 1 Completion Summary (Production Hardening)
+
+| Gap | Files Created/Modified | Key Implementation |
+|-----|----------------------|-------------------|
+| GAP-01: Durable Event Bus | `events/durable-bus.ts`, `events/redis.ts`, `events/bus.ts` (modified) | Redis-backed DLQ (`cis:dlq`), pending event stream (`cis:events:pending`), crash recovery via `recoverPendingEvents()`, feature-flagged via `EVENT_BUS_BACKEND=memory\|redis` |
+| GAP-02: Graceful Shutdown | `index.ts` (modified) | SIGTERM/SIGINT handlers, HTTP drain (configurable timeout), Redis close, DB pool close |
+| GAP-04: Rate Limiting | `api/middleware/rateLimit.ts`, `config.ts` (modified) | 3-tier sliding window: global (100/min), AI (10/min), write (30/min), `X-RateLimit-*` headers, 429 + `Retry-After` |
+| GAP-05: Infrastructure | `Dockerfile`, `docker-compose.yml`, `ecosystem.config.js`, `infra/nginx.conf`, `infra/deploy.sh`, `infra/backup-db.sh`, `.github/workflows/ci.yml`, `.env.production.example` | Multi-stage Docker (Node 20 Alpine, dumb-init, non-root), PostgreSQL 16 + Redis 7 compose stack, PM2 cluster mode, atomic symlink deployment with rollback, CI pipeline (lint → test → build → Docker smoke) |
+
+### 9.4 Phase 2 Detailed Plan (Test Coverage — Quality Gate)
+
+#### GAP-06: API Endpoint Integration Tests
+
+**Current State:** 23 route files with 50+ endpoints, zero integration test coverage on routes. Only auth middleware is integration-tested.
+
+**Scope:** Test every route group through the Express middleware stack with mocked DB.
+
+| Route Group | Endpoints | Required Tests | Key Assertions |
+|------------|-----------|---------------|----------------|
+| Auth | `POST /login`, `GET /me` | 5+ | Login success/failure, lockout, deactivated, force password change |
+| Users | `GET /`, `GET /:id`, `POST /`, `PATCH /:id` | 6+ | CRUD, pagination, filtering, status change event emission, 404 for missing, 400 for invalid UUID |
+| Messages | `GET /`, `GET /:id`, `POST /` | 4+ | Create + list, event emission verification, validation (empty content, missing sender) |
+| Transactions | `GET /`, `GET /:id`, `POST /`, `PATCH /:id` | 4+ | Create, status change, event emission, validation |
+| Risk Signals | `GET /`, `GET /:id`, `POST /` | 4+ | Query by user, filter by type, confidence filtering |
+| Risk Scores | `GET /`, `GET /user/:id`, `GET /:id` | 4+ | Query by tier, filter by min_score, latest score per user |
+| Enforcement | `GET /`, `GET /:id`, `POST /:id/reverse` | 4+ | List, detail, reversal with reason (required), 404 for already reversed |
+| Alerts | `GET /`, `GET /:id`, `PATCH /:id` | 4+ | Priority-sorted listing, status transitions, claim/dismiss, permission checks (alerts.action) |
+| Cases | `GET /`, `GET /:id`, `POST /`, `PATCH /:id`, `POST /:id/notes` | 6+ | Full CRUD, notes timeline, auto-assignment, permission differentiation (cases.view vs cases.create vs cases.action) |
+| Appeals | `GET /`, `POST /`, `POST /:id/resolve` | 6+ | Create with validation (enforcement exists, not reversed, no duplicate), resolve (approved → reversal cascade, denied), permission checks (appeals.resolve) |
+| Admin Users | `GET /`, `GET /:id`, `POST /`, `PATCH /:id`, `POST /:id/reset-password` | 5+ | CRUD, super_admin restriction, duplicate email (409), self-deactivation prevention, permission overrides, audit logging |
+
+**Total: 40+ integration tests**
+
+**Test Architecture:**
+- Shared test helper (`tests/helpers/setup.ts`): Mocks for DB, config, event emission, Redis, permissions; token generation for any role; Express app factory
+- Each route file gets its own `tests/integration/<route>.test.ts` file
+- Pattern: Mock DB → Mount route → Start temp server → fetch → Assert response
+
+**Acceptance Criteria:**
+- All route groups have integration tests covering happy path + error cases
+- Auth enforcement verified (401 without token, 403 without permission)
+- Zod validation verified (400 on invalid input)
+- Event emission verified (emitMessageCreated, etc. called after mutations)
+- Coverage gate: ≥60% backend line coverage in CI
+
+#### GAP-07: Event Bus & Infrastructure Tests
+
+**Current State:** DurableEventBus has 11 unit tests (added in Phase 1). In-memory EventBus (the default) has zero tests despite being the primary bus used by all existing consumers.
+
+**Scope:** Unit tests for in-memory EventBus class.
+
+| Test Category | Tests | Key Assertions |
+|--------------|-------|----------------|
+| emit() happy path | 2 | Event dispatched to registered consumer; event logged to audit trail |
+| emit() idempotency | 2 | Duplicate event ID rejected (in-memory cache); duplicate event ID rejected (DB fallback) |
+| registerConsumer() | 3 | Type-specific consumer receives matching events; wildcard (*) consumer receives all events; multiple consumers on same type all fire |
+| Dead letter queue | 4 | Consumer exception → event in DLQ; retryDeadLetters() re-dispatches; max retries (3) exceeded → permanent failure; clearDeadLetterQueue() empties DLQ |
+| Utility methods | 3 | getConsumerCount() by type and total; getRegisteredConsumers() returns correct map; subscribe/unsubscribe |
+
+**Total: 14+ unit tests**
+
+**Acceptance Criteria:**
+- All EventBus public methods tested
+- Idempotency enforcement verified (in-memory + DB check)
+- DLQ lifecycle tested (failure → DLQ → retry → success OR max retries)
+
+#### GAP-08: Dashboard E2E Tests
+
+**Current State:** Playwright configured, 13 tests defined but ~80% stubbed with empty bodies. Only login page visibility test works without a running backend.
+
+**Scope:** Flesh out all stubbed tests + add new test suites.
+
+| Test Suite | Tests | What It Verifies |
+|-----------|-------|-----------------|
+| Authentication | 3 | Login page rendering, successful login → dashboard redirect, invalid credentials → error message |
+| Module Navigation | 2 | All permitted modules visible after login, navigation between modules |
+| Alert Triage Workflow | 3 | Claim open alert, change alert priority, dismiss low-priority alert |
+| Case Investigation | 3 | View case detail + notes, add internal note, change case status |
+| Enforcement Actions | 2 | Reversal requires justification (reason field), confirmation modal before reversal |
+| Appeal Resolution | 2 | Resolution modal shows approve/deny options, approval reverses enforcement |
+| RBAC Enforcement | 2 | Ops role cannot see enforcement module, restricted modules hidden from sidebar |
+| Settings Module | 2 | Create sub-admin with role, admin list updates |
+
+**Total: 19 E2E tests**
+
+**Prerequisites:** Running backend + dashboard (via docker-compose or dev servers)
+
+**Acceptance Criteria:**
+- Login flow works end-to-end
+- At least 6 workflow scenarios pass (alert triage, case investigation, enforcement reversal, appeal resolution, RBAC, settings)
+- Playwright added to CI pipeline (runs against docker-compose stack)
 
 ---
 
@@ -686,3 +1113,36 @@ Phase 1 COMPLETE → Phase 2 (Test Coverage) → Phase 3 (Shadow Mode)
 | Observability | Partial | Audit logs complete; structured logging not yet implemented |
 
 **Overall Status: Ready for shadow-mode deployment pending Sidebase integration.**
+
+---
+
+## 14. Phase 2 Execution Dependencies
+
+```
+GAP-06 (API Integration Tests)
+  └── Requires: tests/helpers/setup.ts (shared mocks, token gen)
+  └── Files: tests/integration/{users,messages,transactions,risk-signals,
+             risk-scores,enforcement,alerts,cases,appeals,admin-users}.test.ts
+  └── Pattern: Mock DB → Mount route → Temp server → fetch → Assert
+  └── Total: ~40 tests across 10 route groups
+
+GAP-07 (EventBus Unit Tests)
+  └── File: tests/unit/event-bus.test.ts
+  └── Pattern: Mock DB → new EventBus() → emit/register/retry → Assert
+  └── Total: ~14 tests
+  └── Note: DurableEventBus already has 11 tests (Phase 1)
+
+GAP-08 (Dashboard E2E Tests)
+  └── Requires: Running backend + dashboard (docker-compose up)
+  └── File: tests/e2e/dashboard.spec.ts (replace stubbed tests)
+  └── Fixtures: tests/e2e/fixtures.ts (auth helpers, seed data)
+  └── Total: ~19 tests
+  └── Note: Cannot run in CI without docker-compose test stack
+
+Phase 2 Exit Criteria:
+  ✓ >60% backend line coverage
+  ✓ All route groups have integration tests
+  ✓ EventBus fully covered (both memory and durable)
+  ✓ 6+ E2E workflow scenarios passing
+  ✓ Coverage gate enforced in CI pipeline
+```
