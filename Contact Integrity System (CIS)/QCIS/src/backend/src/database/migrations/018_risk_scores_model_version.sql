@@ -5,5 +5,5 @@
 -- {"operational":X,"behavioral":Y,"network":Z}, new rows will have
 -- the 5-component nested structure.
 
-ALTER TABLE risk_scores ADD COLUMN IF NOT EXISTS model_version VARCHAR(10) DEFAULT '3-layer';
+ALTER TABLE risk_scores ADD COLUMN IF NOT EXISTS model_version VARCHAR(20) DEFAULT '3-layer';
 CREATE INDEX IF NOT EXISTS idx_risk_scores_model_version ON risk_scores(model_version);
