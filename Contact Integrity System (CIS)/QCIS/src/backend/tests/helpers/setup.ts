@@ -38,6 +38,7 @@ vi.mock('../../src/config', () => ({
     webhook: { secret: 'test-webhook-secret', allowedSources: ['qwickservices'] },
     shadowMode: true,
     enforcementKillSwitch: false,
+    scoringModel: '5-component' as const,
     logLevel: 'error',
     dashboardUrl: 'http://localhost:3000',
     openai: { apiKey: '', model: 'gpt-4o-mini' },

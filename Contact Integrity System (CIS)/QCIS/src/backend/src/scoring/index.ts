@@ -1,10 +1,14 @@
 // QwickServices CIS — Scoring Engine
 // Orchestrates signal aggregation → trust score → tier assignment
 // Hard constraint: scoring NEVER reads raw message content
+// Supports both 3-layer (V1) and 5-component (V2) models via config.scoringModel
 
 import { query } from '../database/connection';
 import { generateId } from '../shared/utils';
+import { config } from '../config';
 import { DomainEvent, EventType } from '../events/types';
+
+// V1 imports (3-layer model)
 import {
   calculateTrustScore,
   computeOperationalScore,
@@ -16,6 +20,24 @@ import {
   aggregateBehavioralInputs,
   aggregateNetworkInputs,
 } from './aggregator';
+
+// V2 imports (5-component model)
+import {
+  calculateTrustScoreV2,
+  computeBehavioralScoreV2,
+  computeFinancialScore,
+  computeCommunicationScore,
+  computeHistoricalScore,
+  computeKYCScore,
+} from './trust-score-v2';
+import {
+  aggregateBehavioralInputsV2,
+  aggregateFinancialInputs,
+  aggregateCommunicationInputs,
+  aggregateHistoricalInputs,
+  aggregateKYCInputs,
+} from './aggregator-v2';
+
 import { assignTierWithTrend, RiskTier } from './tiers';
 
 export interface ScoringResult {
@@ -23,18 +45,24 @@ export interface ScoringResult {
   score: number;
   tier: RiskTier;
   trend: string;
-  factors: {
-    operational: number;
-    behavioral: number;
-    network: number;
-  };
+  factors: Record<string, unknown>;
   signal_count: number;
 }
 
 /**
  * Compute and persist a risk score for a user.
+ * Delegates to V1 or V2 pipeline based on config.scoringModel.
  */
 export async function computeRiskScore(userId: string): Promise<ScoringResult> {
+  if (config.scoringModel === '5-component') {
+    return computeRiskScoreV2(userId);
+  }
+  return computeRiskScoreV1(userId);
+}
+
+// ─── V1 Pipeline (3-layer, legacy) ─────────────────────────
+
+async function computeRiskScoreV1(userId: string): Promise<ScoringResult> {
   // Step 1: Aggregate inputs from each layer
   const [operationalInputs, behavioralInputs, networkInputs] = await Promise.all([
     aggregateOperationalInputs(userId),
@@ -54,7 +82,48 @@ export async function computeRiskScore(userId: string): Promise<ScoringResult> {
     network: networkScore,
   });
 
-  // Step 4: Get recent scores for trend analysis
+  // Step 4-8: Shared persistence path
+  return persistAndReturn(userId, trustScore.score, trustScore.factors as unknown as Record<string, unknown>, '3-layer');
+}
+
+// ─── V2 Pipeline (5-component) ─────────────────────────────
+
+async function computeRiskScoreV2(userId: string): Promise<ScoringResult> {
+  // Step 1: Aggregate all 5 components in parallel
+  const [behavioralInputs, financialInputs, communicationInputs, historicalInputs, kycInputs] =
+    await Promise.all([
+      aggregateBehavioralInputsV2(userId),
+      aggregateFinancialInputs(userId),
+      aggregateCommunicationInputs(userId),
+      aggregateHistoricalInputs(userId),
+      aggregateKYCInputs(userId),
+    ]);
+
+  // Step 2: Compute per-component scores
+  const factors = {
+    behavioral: { score: computeBehavioralScoreV2(behavioralInputs), inputs: behavioralInputs },
+    financial: { score: computeFinancialScore(financialInputs), inputs: financialInputs },
+    communication: { score: computeCommunicationScore(communicationInputs), inputs: communicationInputs },
+    historical: { score: computeHistoricalScore(historicalInputs), inputs: historicalInputs },
+    kyc: { score: computeKYCScore(kycInputs), inputs: kycInputs },
+  };
+
+  // Step 3: Calculate composite trust score
+  const trustScore = calculateTrustScoreV2(factors);
+
+  // Step 4-8: Shared persistence path
+  return persistAndReturn(userId, trustScore.score, trustScore.factors as unknown as Record<string, unknown>, '5-component');
+}
+
+// ─── Shared Persistence ────────────────────────────────────
+
+async function persistAndReturn(
+  userId: string,
+  score: number,
+  factors: Record<string, unknown>,
+  modelVersion: string
+): Promise<ScoringResult> {
+  // Get recent scores for trend analysis
   let recentScores: number[] = [];
   try {
     const result = await query(
@@ -66,10 +135,10 @@ export async function computeRiskScore(userId: string): Promise<ScoringResult> {
     // Non-fatal
   }
 
-  // Step 5: Assign tier with trend
-  const { tier, trend } = assignTierWithTrend(trustScore.score, recentScores);
+  // Assign tier with trend
+  const { tier, trend } = assignTierWithTrend(score, recentScores);
 
-  // Step 6: Count total signals
+  // Count total signals
   let signalCount = 0;
   try {
     const countResult = await query(
@@ -81,31 +150,32 @@ export async function computeRiskScore(userId: string): Promise<ScoringResult> {
     // Non-fatal
   }
 
-  // Step 7: Persist the score
+  // Persist the score
   const scoreId = generateId();
   try {
     await query(
-      `INSERT INTO risk_scores (id, user_id, score, tier, factors, trend, signal_count, last_signal_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      `INSERT INTO risk_scores (id, user_id, score, tier, factors, trend, signal_count, last_signal_at, model_version)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)`,
       [
         scoreId,
         userId,
-        trustScore.score,
+        score,
         tier,
-        JSON.stringify(trustScore.factors),
+        JSON.stringify(factors),
         trend,
         signalCount,
+        modelVersion,
       ]
     );
   } catch (err) {
     console.error('[Scoring] Failed to persist score:', err);
   }
 
-  // Step 8: Update user's trust_score field
+  // Update user's trust_score field
   try {
     await query(
       'UPDATE users SET trust_score = $1 WHERE id = $2',
-      [trustScore.score, userId]
+      [score, userId]
     );
   } catch {
     // Non-fatal
@@ -113,12 +183,24 @@ export async function computeRiskScore(userId: string): Promise<ScoringResult> {
 
   return {
     user_id: userId,
-    score: trustScore.score,
+    score,
     tier,
     trend,
-    factors: trustScore.factors,
+    factors,
     signal_count: signalCount,
   };
+}
+
+/**
+ * Extract user_id from an event payload.
+ * Handles all payload shapes: sender_id, user_id, client_id, provider_id.
+ */
+function extractUserId(payload: Record<string, unknown>): string | undefined {
+  return (payload.sender_id as string)
+    || (payload.user_id as string)
+    || (payload.client_id as string)
+    || (payload.provider_id as string)
+    || undefined;
 }
 
 /**
@@ -129,22 +211,31 @@ export function registerScoringConsumer(): void {
   const { getEventBus } = require('../events/bus');
   const bus = getEventBus();
 
-  // Re-score after detection generates signals
-  // We listen on message events (which trigger detection → signals)
   bus.registerConsumer({
     name: 'scoring-engine',
     eventTypes: [
+      // Original message/transaction events
       EventType.MESSAGE_CREATED,
       EventType.MESSAGE_EDITED,
       EventType.TRANSACTION_INITIATED,
       EventType.TRANSACTION_COMPLETED,
       EventType.TRANSACTION_FAILED,
+      // Phase 2A booking events
+      EventType.BOOKING_CREATED,
+      EventType.BOOKING_CANCELLED,
+      EventType.BOOKING_COMPLETED,
+      EventType.BOOKING_NO_SHOW,
+      // Phase 2A wallet events
+      EventType.WALLET_DEPOSIT,
+      EventType.WALLET_WITHDRAWAL,
+      EventType.WALLET_TRANSFER,
+      // Phase 2A provider/user events
+      EventType.PROVIDER_REGISTERED,
+      EventType.PROVIDER_UPDATED,
+      EventType.USER_REGISTERED,
     ],
     handler: async (event: DomainEvent) => {
-      // Extract user_id from event payload
-      const userId = (event.payload as { sender_id?: string; user_id?: string }).sender_id
-        || (event.payload as { user_id?: string }).user_id;
-
+      const userId = extractUserId(event.payload);
       if (!userId) return;
 
       // Delay slightly to let detection signals persist first

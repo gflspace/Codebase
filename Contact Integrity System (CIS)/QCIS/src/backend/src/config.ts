@@ -57,6 +57,7 @@ export const config = {
 
   shadowMode: optional('SHADOW_MODE', 'true') === 'true',
   enforcementKillSwitch: optional('ENFORCEMENT_KILL_SWITCH', 'false') === 'true',
+  scoringModel: optional('SCORING_MODEL', '5-component') as '3-layer' | '5-component',
 
   logLevel: optional('LOG_LEVEL', 'debug'),
   dashboardUrl: optional('DASHBOARD_URL', 'http://localhost:3000'),
