@@ -4,6 +4,8 @@ import { DashboardFilterProvider } from '@/contexts/DashboardFilterContext';
 import GlobalControlsBar from './GlobalControlsBar';
 import ExecutiveSummary from './ExecutiveSummary';
 import SignalBreakdown from './SignalBreakdown';
+import LeakageFunnel from './LeakageFunnel';
+import NetworkGraph from './NetworkGraph';
 import ActivityTimeline from './ActivityTimeline';
 
 export default function IntelligenceDashboard() {
@@ -20,6 +22,8 @@ export default function IntelligenceDashboard() {
 
           <ExecutiveSummary />
           <SignalBreakdown />
+          <LeakageFunnel />
+          <NetworkGraph />
           <ActivityTimeline />
         </div>
       </div>

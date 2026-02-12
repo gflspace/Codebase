@@ -27,6 +27,8 @@ export const eventSchema = z.object({
     'user.registered',
     'user.contact_field_changed',
     'rating.submitted',
+    'leakage.stage_advanced',
+    'relationship.updated',
   ]),
   correlation_id: z.string().uuid().optional(),
   timestamp: z.string().datetime().optional(),
@@ -312,4 +314,23 @@ export const ratingQuerySchema = paginationQuery.extend({
   client_id: z.string().uuid().optional(),
   min_score: z.coerce.number().int().min(1).max(5).optional(),
   max_score: z.coerce.number().int().min(1).max(5).optional(),
+});
+
+// ─── Intelligence (Phase 3A) ─────────────────────────────────
+
+export const leakageQuerySchema = paginationQuery.extend({
+  user_id: z.string().uuid().optional(),
+  stage: z.enum(['signal', 'attempt', 'confirmation', 'leakage']).optional(),
+  platform_destination: z.string().max(100).optional(),
+});
+
+export const networkQuerySchema = z.object({
+  user_id: z.string().uuid(),
+  depth: z.coerce.number().int().min(1).max(3).default(1).optional(),
+  min_strength: z.coerce.number().min(0).max(1).default(0).optional(),
+});
+
+export const deviceQuerySchema = paginationQuery.extend({
+  user_id: z.string().uuid().optional(),
+  device_hash: z.string().max(64).optional(),
 });

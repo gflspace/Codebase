@@ -46,6 +46,10 @@ export enum EventType {
   // Phase 2C — Contact & rating events
   CONTACT_FIELD_CHANGED = 'user.contact_field_changed',
   RATING_SUBMITTED = 'rating.submitted',
+
+  // Phase 3A — Leakage & relationship events
+  LEAKAGE_STAGE_ADVANCED = 'leakage.stage_advanced',
+  RELATIONSHIP_UPDATED = 'relationship.updated',
 }
 
 export interface DomainEvent {
@@ -170,6 +174,23 @@ export interface RatingSubmittedPayload {
   booking_id?: string;
   score: number;
   comment?: string;
+}
+
+export interface LeakageStageAdvancedPayload {
+  leakage_event_id: string;
+  user_id: string;
+  counterparty_id?: string;
+  previous_stage: string;
+  new_stage: string;
+  platform_destination?: string;
+}
+
+export interface RelationshipUpdatedPayload {
+  relationship_id: string;
+  user_a_id: string;
+  user_b_id: string;
+  relationship_type: string;
+  interaction_count: number;
 }
 
 // ─── Event Handler Type ───────────────────────────────────────

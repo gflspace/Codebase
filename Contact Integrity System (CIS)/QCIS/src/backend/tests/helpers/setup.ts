@@ -64,6 +64,8 @@ export const mockEmitBookingCancelled = vi.fn().mockResolvedValue(undefined);
 export const mockEmitWalletTransaction = vi.fn().mockResolvedValue(undefined);
 export const mockEmitContactFieldChanged = vi.fn().mockResolvedValue(undefined);
 export const mockEmitRatingSubmitted = vi.fn().mockResolvedValue(undefined);
+export const mockEmitLeakageStageAdvanced = vi.fn().mockResolvedValue(undefined);
+export const mockEmitRelationshipUpdated = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../../src/events/emit', () => ({
   emitMessageCreated: (...a: unknown[]) => mockEmitMessageCreated(...a),
@@ -81,6 +83,8 @@ vi.mock('../../src/events/emit', () => ({
   emitWalletTransaction: (...a: unknown[]) => mockEmitWalletTransaction(...a),
   emitContactFieldChanged: (...a: unknown[]) => mockEmitContactFieldChanged(...a),
   emitRatingSubmitted: (...a: unknown[]) => mockEmitRatingSubmitted(...a),
+  emitLeakageStageAdvanced: (...a: unknown[]) => mockEmitLeakageStageAdvanced(...a),
+  emitRelationshipUpdated: (...a: unknown[]) => mockEmitRelationshipUpdated(...a),
 }));
 
 // ─── Mock Event Normalizer ───────────────────────────────────
@@ -215,6 +219,8 @@ export function resetAllMocks(): void {
   mockEmitWalletTransaction.mockClear();
   mockEmitContactFieldChanged.mockClear();
   mockEmitRatingSubmitted.mockClear();
+  mockEmitLeakageStageAdvanced.mockClear();
+  mockEmitRelationshipUpdated.mockClear();
   mockNormalizeWebhookEvent.mockClear();
   mockResolvePermissions.mockClear();
   mockResolvePermissions.mockResolvedValue(ALL_PERMISSIONS);

@@ -13,6 +13,8 @@ import { registerPaymentAnomalyConsumer } from './detection/consumers/payment-an
 import { registerProviderBehaviorConsumer } from './detection/consumers/provider-behavior';
 import { registerTemporalPatternConsumer } from './detection/consumers/temporal-pattern';
 import { registerContactChangeConsumer } from './detection/consumers/contact-change';
+import { registerLeakageConsumer } from './detection/consumers/leakage-tracking';
+import { registerRelationshipConsumer } from './detection/consumers/relationship-tracking';
 import { globalLimiter, aiLimiter, writeLimiter } from './api/middleware/rateLimit';
 import { closeRedis, testRedisConnection } from './events/redis';
 import { getEventBus } from './events/bus';
@@ -41,6 +43,7 @@ import adminUserRoutes from './api/routes/admin-users';
 import adminRoleRoutes from './api/routes/admin-roles';
 import webhookRoutes from './api/routes/webhooks';
 import ratingRoutes from './api/routes/ratings';
+import intelligenceRoutes from './api/routes/intelligence';
 
 const app = express();
 
@@ -103,6 +106,7 @@ app.use('/api/admin/users', adminUserRoutes);
 app.use('/api/admin/roles', adminRoleRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/ratings', ratingRoutes);
+app.use('/api/intelligence', intelligenceRoutes);
 
 // Error handling
 app.use(notFound);
@@ -149,7 +153,10 @@ async function start(): Promise<void> {
   registerProviderBehaviorConsumer();
   registerTemporalPatternConsumer();
   registerContactChangeConsumer();
-  console.log('  Event consumers: 8 registered (detection, scoring, enforcement + 5 Phase 2C detectors)');
+  // Phase 3A — Intelligence layer consumers
+  registerLeakageConsumer();
+  registerRelationshipConsumer();
+  console.log('  Event consumers: 10 registered (detection, scoring, enforcement + 5 Phase 2C detectors + 2 Phase 3A intelligence)');
 
   // Recover pending events from last crash (durable bus only)
   const bus = getEventBus();

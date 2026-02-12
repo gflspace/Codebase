@@ -327,6 +327,44 @@ export async function emitRatingSubmitted(rating: {
   await safeEmit(event);
 }
 
+// ─── Leakage & Relationship Events (Phase 3A) ───────────────
+
+export async function emitLeakageStageAdvanced(data: {
+  leakage_event_id: string;
+  user_id: string;
+  counterparty_id?: string;
+  previous_stage: string;
+  new_stage: string;
+  platform_destination?: string;
+}): Promise<void> {
+  const event = buildEvent(EventType.LEAKAGE_STAGE_ADVANCED, {
+    leakage_event_id: data.leakage_event_id,
+    user_id: data.user_id,
+    counterparty_id: data.counterparty_id,
+    previous_stage: data.previous_stage,
+    new_stage: data.new_stage,
+    platform_destination: data.platform_destination,
+  });
+  await safeEmit(event);
+}
+
+export async function emitRelationshipUpdated(data: {
+  relationship_id: string;
+  user_a_id: string;
+  user_b_id: string;
+  relationship_type: string;
+  interaction_count: number;
+}): Promise<void> {
+  const event = buildEvent(EventType.RELATIONSHIP_UPDATED, {
+    relationship_id: data.relationship_id,
+    user_a_id: data.user_a_id,
+    user_b_id: data.user_b_id,
+    relationship_type: data.relationship_type,
+    interaction_count: data.interaction_count,
+  });
+  await safeEmit(event);
+}
+
 // ─── Enforcement Events ──────────────────────────────────────
 
 export async function emitEnforcementReversed(action: {

@@ -288,3 +288,53 @@ export const getSignalBreakdown = (token: string, params: Record<string, string>
   const qs = '?' + new URLSearchParams(params).toString();
   return request<{ data: SignalBreakdownData }>(`/stats/v2/signal-breakdown${qs}`, { token });
 };
+
+// ─── Leakage Funnel (Phase 3A) ───────────────────────────────────
+
+export interface LeakageFunnelData {
+  signal: number;
+  attempt: number;
+  confirmation: number;
+  leakage: number;
+}
+
+export interface LeakageDestination {
+  platform: string;
+  count: number;
+}
+
+export const getLeakageFunnel = (token: string, params: Record<string, string>) => {
+  const qs = '?' + new URLSearchParams(params).toString();
+  return request<{ data: LeakageFunnelData }>(`/intelligence/leakage/funnel${qs}`, { token });
+};
+
+export const getLeakageDestinations = (token: string) =>
+  request<{ data: LeakageDestination[] }>('/intelligence/leakage/destinations', { token });
+
+// ─── Network Graph (Phase 3A) ────────────────────────────────────
+
+export interface NetworkNode {
+  id: string;
+  display_name: string;
+  user_type: string;
+  status: string;
+  trust_score: number | null;
+}
+
+export interface NetworkEdge {
+  id: string;
+  user_a_id: string;
+  user_b_id: string;
+  relationship_type: string;
+  interaction_count: number;
+  total_value: number;
+  strength_score: number;
+}
+
+export interface NetworkData {
+  nodes: NetworkNode[];
+  edges: NetworkEdge[];
+}
+
+export const getUserNetwork = (token: string, userId: string, depth: number = 1) =>
+  request<{ data: NetworkData }>(`/intelligence/network/${userId}?depth=${depth}`, { token });
