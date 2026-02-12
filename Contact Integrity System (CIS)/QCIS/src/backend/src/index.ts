@@ -8,6 +8,11 @@ import { errorHandler, notFound } from './api/middleware/errorHandler';
 import { registerDetectionConsumer } from './detection';
 import { registerScoringConsumer } from './scoring';
 import { registerEnforcementConsumer } from './enforcement';
+import { registerBookingAnomalyConsumer } from './detection/consumers/booking-anomaly';
+import { registerPaymentAnomalyConsumer } from './detection/consumers/payment-anomaly';
+import { registerProviderBehaviorConsumer } from './detection/consumers/provider-behavior';
+import { registerTemporalPatternConsumer } from './detection/consumers/temporal-pattern';
+import { registerContactChangeConsumer } from './detection/consumers/contact-change';
 import { globalLimiter, aiLimiter, writeLimiter } from './api/middleware/rateLimit';
 import { closeRedis, testRedisConnection } from './events/redis';
 import { getEventBus } from './events/bus';
@@ -134,7 +139,14 @@ async function start(): Promise<void> {
   registerDetectionConsumer();
   registerScoringConsumer();
   registerEnforcementConsumer();
-  console.log('  Event consumers: detection, scoring, enforcement registered');
+
+  // Phase 2C — Detection expansion (5 new consumers)
+  registerBookingAnomalyConsumer();
+  registerPaymentAnomalyConsumer();
+  registerProviderBehaviorConsumer();
+  registerTemporalPatternConsumer();
+  registerContactChangeConsumer();
+  console.log('  Event consumers: 8 registered (detection, scoring, enforcement + 5 Phase 2C detectors)');
 
   // Recover pending events from last crash (durable bus only)
   const bus = getEventBus();

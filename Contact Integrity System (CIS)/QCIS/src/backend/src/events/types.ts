@@ -42,6 +42,10 @@ export enum EventType {
 
   // User registration
   USER_REGISTERED = 'user.registered',
+
+  // Phase 2C — Contact & rating events
+  CONTACT_FIELD_CHANGED = 'user.contact_field_changed',
+  RATING_SUBMITTED = 'rating.submitted',
 }
 
 export interface DomainEvent {
@@ -150,6 +154,22 @@ export interface UserRegisteredPayload {
   display_name?: string;
   email?: string;
   user_type?: string;
+}
+
+export interface ContactFieldChangedPayload {
+  user_id: string;
+  field: 'phone' | 'email';
+  old_value?: string;
+  new_value: string;
+}
+
+export interface RatingSubmittedPayload {
+  rating_id: string;
+  client_id: string;
+  provider_id: string;
+  booking_id?: string;
+  score: number;
+  comment?: string;
 }
 
 // ─── Event Handler Type ───────────────────────────────────────

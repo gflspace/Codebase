@@ -8,8 +8,7 @@ import { detectObfuscation } from './obfuscation';
 import { analyzeContext } from './context';
 import { generateSignals, GeneratedSignal } from './signals';
 import { DomainEvent, EventType } from '../events/types';
-import { query } from '../database/connection';
-import { generateId } from '../shared/utils';
+import { persistSignal } from './persist';
 
 export interface DetectionOutput {
   event_id: string;
@@ -96,24 +95,13 @@ export async function analyzeEvent(event: DomainEvent): Promise<DetectionOutput>
 
   // Step 6: Persist signals to database
   for (const signal of signals) {
-    try {
-      await query(
-        `INSERT INTO risk_signals (id, source_event_id, user_id, signal_type, confidence, evidence, obfuscation_flags, pattern_flags)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          generateId(),
-          event.id,
-          payload.sender_id,
-          signal.signal_type,
-          signal.confidence,
-          JSON.stringify(signal.evidence),
-          signal.obfuscation_flags,
-          signal.pattern_flags,
-        ]
-      );
-    } catch (err) {
-      console.error('[Detection] Failed to persist signal:', err);
-    }
+    await persistSignal(event.id, payload.sender_id, {
+      signal_type: signal.signal_type,
+      confidence: signal.confidence,
+      evidence: signal.evidence,
+      obfuscation_flags: signal.obfuscation_flags,
+      pattern_flags: signal.pattern_flags,
+    });
   }
 
   return {

@@ -62,6 +62,8 @@ export const mockEmitBookingUpdated = vi.fn().mockResolvedValue(undefined);
 export const mockEmitBookingCompleted = vi.fn().mockResolvedValue(undefined);
 export const mockEmitBookingCancelled = vi.fn().mockResolvedValue(undefined);
 export const mockEmitWalletTransaction = vi.fn().mockResolvedValue(undefined);
+export const mockEmitContactFieldChanged = vi.fn().mockResolvedValue(undefined);
+export const mockEmitRatingSubmitted = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../../src/events/emit', () => ({
   emitMessageCreated: (...a: unknown[]) => mockEmitMessageCreated(...a),
@@ -77,6 +79,8 @@ vi.mock('../../src/events/emit', () => ({
   emitBookingCompleted: (...a: unknown[]) => mockEmitBookingCompleted(...a),
   emitBookingCancelled: (...a: unknown[]) => mockEmitBookingCancelled(...a),
   emitWalletTransaction: (...a: unknown[]) => mockEmitWalletTransaction(...a),
+  emitContactFieldChanged: (...a: unknown[]) => mockEmitContactFieldChanged(...a),
+  emitRatingSubmitted: (...a: unknown[]) => mockEmitRatingSubmitted(...a),
 }));
 
 // ─── Mock Event Normalizer ───────────────────────────────────
@@ -209,6 +213,8 @@ export function resetAllMocks(): void {
   mockEmitBookingCompleted.mockClear();
   mockEmitBookingCancelled.mockClear();
   mockEmitWalletTransaction.mockClear();
+  mockEmitContactFieldChanged.mockClear();
+  mockEmitRatingSubmitted.mockClear();
   mockNormalizeWebhookEvent.mockClear();
   mockResolvePermissions.mockClear();
   mockResolvePermissions.mockResolvedValue(ALL_PERMISSIONS);

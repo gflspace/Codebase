@@ -291,6 +291,42 @@ export async function emitWalletTransaction(tx: {
   await safeEmit(event);
 }
 
+// ─── Contact & Rating Events (Phase 2C) ────────────────────
+
+export async function emitContactFieldChanged(change: {
+  user_id: string;
+  field: 'phone' | 'email';
+  old_value?: string;
+  new_value: string;
+}): Promise<void> {
+  const event = buildEvent(EventType.CONTACT_FIELD_CHANGED, {
+    user_id: change.user_id,
+    field: change.field,
+    old_value: change.old_value,
+    new_value: change.new_value,
+  });
+  await safeEmit(event);
+}
+
+export async function emitRatingSubmitted(rating: {
+  id: string;
+  client_id: string;
+  provider_id: string;
+  booking_id?: string;
+  score: number;
+  comment?: string;
+}): Promise<void> {
+  const event = buildEvent(EventType.RATING_SUBMITTED, {
+    rating_id: rating.id,
+    client_id: rating.client_id,
+    provider_id: rating.provider_id,
+    booking_id: rating.booking_id,
+    score: rating.score,
+    comment: rating.comment,
+  });
+  await safeEmit(event);
+}
+
 // ─── Enforcement Events ──────────────────────────────────────
 
 export async function emitEnforcementReversed(action: {
