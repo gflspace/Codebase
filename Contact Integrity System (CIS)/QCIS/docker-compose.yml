@@ -1,0 +1,74 @@
+# QwickServices CIS — Local Development Stack
+# Usage: docker compose up -d
+
+services:
+  # ─── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: cis-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: qwick_cis_dev
+      POSTGRES_USER: cis_app_user
+      POSTGRES_PASSWORD: changeme_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - cis_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cis_app_user -d qwick_cis_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ──────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: cis-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - cis_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── CIS Backend API ───────────────────────────────────────
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    container_name: cis-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: qwick_cis_dev
+      DB_USER: cis_app_user
+      DB_PASSWORD: changeme_dev_password
+      DB_SSL: "false"
+      JWT_SECRET: dev_jwt_secret_change_in_production
+      HMAC_SECRET: dev_hmac_secret_change_in_production
+      SHADOW_MODE: "true"
+      ENFORCEMENT_KILL_SWITCH: "false"
+      LOG_LEVEL: debug
+      DASHBOARD_URL: http://localhost:3000
+      REDIS_URL: redis://redis:6379
+      EVENT_BUS_BACKEND: redis
+
+volumes:
+  cis_pgdata:
+  cis_redis_data:

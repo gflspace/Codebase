@@ -220,11 +220,24 @@ class EventBus {
   }
 }
 
-let busInstance: EventBus | null = null;
+// ─── Factory: selects backend via EVENT_BUS_BACKEND config ───
 
-export function getEventBus(): EventBus {
+import { config } from '../config';
+import { DurableEventBus } from './durable-bus';
+
+type AnyEventBus = EventBus | DurableEventBus;
+
+let busInstance: AnyEventBus | null = null;
+
+export function getEventBus(): AnyEventBus {
   if (!busInstance) {
-    busInstance = new EventBus();
+    if (config.eventBusBackend === 'redis') {
+      console.log('[EventBus] Using Redis-backed durable event bus');
+      busInstance = new DurableEventBus();
+    } else {
+      console.log('[EventBus] Using in-memory event bus');
+      busInstance = new EventBus();
+    }
   }
   return busInstance;
 }
@@ -233,4 +246,4 @@ export function resetEventBus(): void {
   busInstance = null;
 }
 
-export { EventBus };
+export { EventBus, DurableEventBus };

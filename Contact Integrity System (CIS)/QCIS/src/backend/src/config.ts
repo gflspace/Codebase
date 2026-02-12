@@ -60,4 +60,17 @@ export const config = {
     apiKey: optional('OPENAI_API_KEY', ''),
     model: optional('OPENAI_MODEL', 'gpt-4o-mini'),
   },
+
+  rateLimit: {
+    windowMs: parseInt(optional('RATE_LIMIT_WINDOW_MS', '60000'), 10), // 1 minute
+    max: parseInt(optional('RATE_LIMIT_MAX', '100'), 10),              // 100 req/min global
+    aiMax: parseInt(optional('RATE_LIMIT_AI_MAX', '10'), 10),          // 10 req/min AI endpoints
+    writeMax: parseInt(optional('RATE_LIMIT_WRITE_MAX', '30'), 10),    // 30 req/min write endpoints
+  },
+
+  redis: {
+    url: optional('REDIS_URL', ''),
+  },
+
+  eventBusBackend: optional('EVENT_BUS_BACKEND', 'memory') as 'memory' | 'redis',
 } as const;

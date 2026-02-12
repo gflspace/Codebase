@@ -1,12 +1,17 @@
 import express from 'express';
+import http from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import { config } from './config';
-import { testConnection } from './database/connection';
+import { testConnection, closePool } from './database/connection';
 import { errorHandler, notFound } from './api/middleware/errorHandler';
 import { registerDetectionConsumer } from './detection';
 import { registerScoringConsumer } from './scoring';
 import { registerEnforcementConsumer } from './enforcement';
+import { globalLimiter, aiLimiter, writeLimiter } from './api/middleware/rateLimit';
+import { closeRedis, testRedisConnection } from './events/redis';
+import { getEventBus } from './events/bus';
+import { DurableEventBus } from './events/durable-bus';
 
 // Route imports
 import healthRoutes from './api/routes/health';
@@ -39,6 +44,19 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: '1mb' }));
+
+// Rate limiting (GAP-04)
+app.use('/api', globalLimiter);
+app.use('/api/ai', aiLimiter);
+app.use('/api/users', writeLimiter);
+app.use('/api/messages', writeLimiter);
+app.use('/api/transactions', writeLimiter);
+app.use('/api/events', writeLimiter);
+app.use('/api/alerts', writeLimiter);
+app.use('/api/cases', writeLimiter);
+app.use('/api/appeals', writeLimiter);
+app.use('/api/enforcement-actions', writeLimiter);
+app.use('/api/admin', writeLimiter);
 
 // Root route
 app.get('/', (_req, res) => {
@@ -79,6 +97,11 @@ app.use('/api/admin/roles', adminRoleRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
+// ─── Server lifecycle ─────────────────────────────────────────
+
+let server: http.Server | null = null;
+let isShuttingDown = false;
+
 async function start(): Promise<void> {
   console.log('QwickServices CIS Backend starting...');
   console.log(`  Environment: ${config.nodeEnv}`);
@@ -92,21 +115,96 @@ async function start(): Promise<void> {
     console.warn('  Database: NOT connected — running in degraded mode');
   }
 
+  // Redis connection (if durable bus configured)
+  if (config.eventBusBackend === 'redis' && config.redis.url) {
+    const redisOk = await testRedisConnection();
+    if (redisOk) {
+      console.log('  Redis: connected (durable event bus)');
+    } else {
+      console.warn('  Redis: NOT connected — falling back to in-memory bus');
+    }
+  } else {
+    console.log('  Event bus: in-memory mode');
+  }
+
   // Register event consumers (pipeline: detection → scoring → enforcement)
   registerDetectionConsumer();
   registerScoringConsumer();
   registerEnforcementConsumer();
   console.log('  Event consumers: detection, scoring, enforcement registered');
 
-  app.listen(config.port, () => {
+  // Recover pending events from last crash (durable bus only)
+  const bus = getEventBus();
+  if (bus instanceof DurableEventBus) {
+    const recovered = await bus.recoverPendingEvents();
+    if (recovered > 0) {
+      console.log(`  Recovered ${recovered} pending events from previous session`);
+    }
+  }
+
+  server = app.listen(config.port, () => {
     console.log(`  API listening on port ${config.port}`);
     console.log(`  Health check: http://localhost:${config.port}/api/health`);
   });
+
+  // Keep connections alive but let shutdown close them
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
 }
+
+// ─── Graceful shutdown (GAP-02) ──────────────────────────────
+
+const SHUTDOWN_TIMEOUT_MS = parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '10000', 10);
+
+async function shutdown(signal: string): Promise<void> {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  console.log(`\n[Shutdown] ${signal} received — starting graceful shutdown...`);
+  const shutdownStart = Date.now();
+
+  // 1. Stop accepting new connections
+  if (server) {
+    await new Promise<void>((resolve) => {
+      server!.close(() => {
+        console.log(`[Shutdown] HTTP server closed (${Date.now() - shutdownStart}ms)`);
+        resolve();
+      });
+
+      // Force-close after timeout
+      setTimeout(() => {
+        console.warn(`[Shutdown] Forcing server close after ${SHUTDOWN_TIMEOUT_MS}ms timeout`);
+        resolve();
+      }, SHUTDOWN_TIMEOUT_MS);
+    });
+  }
+
+  // 2. Close Redis connection (if durable bus is active)
+  try {
+    await closeRedis();
+    console.log(`[Shutdown] Redis closed (${Date.now() - shutdownStart}ms)`);
+  } catch {
+    // Redis may not be configured — non-critical
+  }
+
+  // 3. Close database pool (drains active queries)
+  try {
+    await closePool();
+    console.log(`[Shutdown] Database pool closed (${Date.now() - shutdownStart}ms)`);
+  } catch (err) {
+    console.error('[Shutdown] Error closing database pool:', err);
+  }
+
+  console.log(`[Shutdown] Complete in ${Date.now() - shutdownStart}ms`);
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 start().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
 
-export { app };
+export { app, server, isShuttingDown };
