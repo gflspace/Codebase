@@ -137,6 +137,7 @@ const ALL_PERMISSIONS = [
   'settings.manage_admins', 'settings.manage_roles', 'intelligence.view',
   'category.view', 'system_health.view', 'messages.view',
   'rules.view', 'rules.manage',
+  'alerts.ai_summary', 'appeals.ai_analysis', 'risk.ai_patterns', 'risk.ai_predictive',
 ];
 
 export const mockResolvePermissions = vi.fn().mockResolvedValue(ALL_PERMISSIONS);
