@@ -1,0 +1,137 @@
+# ═══════════════════════════════════════════════════════════════
+#  QwickServices CIS — End-to-End Testing Pipeline
+# ═══════════════════════════════════════════════════════════════
+#
+# Runs comprehensive E2E tests with full infrastructure stack.
+#
+# Triggers:
+#   - Push to main branch
+#   - Manual workflow dispatch
+#
+# Test environment:
+#   - PostgreSQL 15 with full schema
+#   - Redis 7 for event bus
+#   - Full backend API server
+#
+# ═══════════════════════════════════════════════════════════════
+
+name: CIS E2E Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/backend/**'
+      - '.github/workflows/e2e.yml'
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: src/backend
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: qwick_cis_e2e
+          POSTGRES_USER: cis_e2e_user
+          POSTGRES_PASSWORD: cis_e2e_password
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U cis_e2e_user"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: src/backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database migrations
+        run: npx tsx src/database/migrate.ts
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5433
+          DB_NAME: qwick_cis_e2e
+          DB_USER: cis_e2e_user
+          DB_PASSWORD: cis_e2e_password
+          DB_SSL: false
+
+      - name: Seed test data
+        run: npx tsx scripts/seed-admin.ts
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5433
+          DB_NAME: qwick_cis_e2e
+          DB_USER: cis_e2e_user
+          DB_PASSWORD: cis_e2e_password
+          DB_SSL: false
+          JWT_SECRET: e2e_test_jwt_secret_32_chars_long_123456
+          ADMIN_EMAIL: admin@test-e2e.local
+          ADMIN_PASSWORD: Test123!@#Admin
+        continue-on-error: true
+
+      - name: Run E2E tests
+        run: npx vitest run --config vitest.e2e.config.ts
+        env:
+          NODE_ENV: test
+          PORT: 3002
+          DB_HOST: localhost
+          DB_PORT: 5433
+          DB_NAME: qwick_cis_e2e
+          DB_USER: cis_e2e_user
+          DB_PASSWORD: cis_e2e_password
+          DB_SSL: false
+          REDIS_URL: redis://localhost:6380
+          JWT_SECRET: e2e_test_jwt_secret_32_chars_long_123456
+          HMAC_SECRET: e2e_test_hmac_secret_32_chars_long_123456
+          WEBHOOK_SECRET: e2e_test_webhook_secret_32_chars_long_12
+          SHADOW_MODE: true
+          EVENT_BUS_BACKEND: redis
+          LOG_LEVEL: error
+          SHUTDOWN_TIMEOUT_MS: 5000
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: src/backend/coverage/
+          retention-days: 7
+
+      - name: E2E test summary
+        if: always()
+        run: |
+          echo "### E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Full-stack E2E tests completed" >> $GITHUB_STEP_SUMMARY
+          echo "📊 Test artifacts uploaded" >> $GITHUB_STEP_SUMMARY

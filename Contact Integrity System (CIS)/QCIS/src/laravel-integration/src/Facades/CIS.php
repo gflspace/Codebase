@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Facade;
 use QwickServices\CIS\CISClient;
 use QwickServices\CIS\DTOs\CISResponse;
 use QwickServices\CIS\DTOs\EvaluateResponse;
+use QwickServices\CIS\Testing\CISFake;
 
 /**
  * Laravel facade for CIS client.
@@ -20,6 +21,20 @@ use QwickServices\CIS\DTOs\EvaluateResponse;
  */
 class CIS extends Facade
 {
+    /**
+     * Replace the CIS client with a fake for testing.
+     *
+     * @return CISFake
+     */
+    public static function fake(): CISFake
+    {
+        $fake = new CISFake();
+
+        static::swap($fake);
+
+        return $fake;
+    }
+
     /**
      * Get the registered name of the component.
      */

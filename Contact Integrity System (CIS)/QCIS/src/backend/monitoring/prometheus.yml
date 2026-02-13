@@ -1,0 +1,88 @@
+# ═══════════════════════════════════════════════════════════════
+#  QwickServices CIS — Prometheus Configuration
+# ═══════════════════════════════════════════════════════════════
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'cis-production'
+    environment: 'production'
+
+# ─── Alerting ────────────────────────────────────────────────────
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# ─── Rule Files ──────────────────────────────────────────────────
+# rule_files:
+#   - "alerts/*.yml"
+
+# ─── Scrape Configurations ───────────────────────────────────────
+scrape_configs:
+  # ─── CIS Backend Application ───────────────────────────────────
+  - job_name: 'cis-backend'
+    metrics_path: '/api/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+    static_configs:
+      - targets: ['cis-backend:3001']
+        labels:
+          service: 'cis-backend'
+          component: 'api'
+
+  # ─── PostgreSQL Database ───────────────────────────────────────
+  # Requires postgres_exporter sidecar
+  # - job_name: 'postgres'
+  #   scrape_interval: 30s
+  #
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+  #       labels:
+  #         service: 'postgres'
+  #         component: 'database'
+
+  # ─── Redis Cache ───────────────────────────────────────────────
+  # Requires redis_exporter sidecar
+  # - job_name: 'redis'
+  #   scrape_interval: 30s
+  #
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+  #       labels:
+  #         service: 'redis'
+  #         component: 'cache'
+
+  # ─── Nginx Reverse Proxy ───────────────────────────────────────
+  # Requires nginx-prometheus-exporter
+  # - job_name: 'nginx'
+  #   scrape_interval: 30s
+  #
+  #   static_configs:
+  #     - targets: ['nginx-exporter:9113']
+  #       labels:
+  #         service: 'nginx'
+  #         component: 'proxy'
+
+  # ─── Node Exporter (Host Metrics) ──────────────────────────────
+  - job_name: 'node'
+    scrape_interval: 30s
+
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'node-exporter'
+          component: 'infrastructure'
+
+  # ─── Prometheus Self-Monitoring ────────────────────────────────
+  - job_name: 'prometheus'
+    scrape_interval: 30s
+
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          component: 'monitoring'

@@ -1,0 +1,21 @@
+# ═══════════════════════════════════════════════════════════════
+#  QwickServices CIS — Grafana Dashboard Provisioning
+# ═══════════════════════════════════════════════════════════════
+#
+# Auto-provisions CIS dashboards on Grafana startup.
+#
+# ═══════════════════════════════════════════════════════════════
+
+apiVersion: 1
+
+providers:
+  - name: 'CIS Dashboards'
+    orgId: 1
+    folder: 'CIS'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

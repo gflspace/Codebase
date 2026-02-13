@@ -520,6 +520,252 @@ CIS_RETRY_ATTEMPTS=5
 CIS_RETRY_DELAY_MS=2000
 ```
 
+## Artisan Commands
+
+The package provides several Artisan commands for testing and monitoring CIS integration.
+
+### `cis:health`
+
+Check CIS backend connectivity and health status.
+
+```bash
+php artisan cis:health
+```
+
+**Output:**
+- Configuration summary
+- Backend health status
+- Connection test results
+- Troubleshooting guidance
+
+### `cis:test-webhook`
+
+Send a test webhook to verify HMAC authentication and connectivity.
+
+```bash
+# Send default test webhook (booking.created)
+php artisan cis:test-webhook
+
+# Send specific event type
+php artisan cis:test-webhook --type=payment.completed
+
+# Specify user ID
+php artisan cis:test-webhook --user-id=test-user-456
+```
+
+**Supported event types:**
+- `booking.created`, `booking.cancelled`, `booking.completed`
+- `payment.initiated`, `payment.completed`, `payment.failed`
+- `chat.message_sent`
+- `provider.registered`
+- `rating.submitted`, `dispute.filed`
+
+### `cis:evaluate`
+
+Test the evaluate endpoint from the command line.
+
+```bash
+# Basic evaluation
+php artisan cis:evaluate --user=123 --action=booking.create
+
+# With counterparty and amount
+php artisan cis:evaluate \
+  --user=customer-123 \
+  --action=payment.initiate \
+  --counterparty=provider-456 \
+  --amount=150.00
+```
+
+**Output:**
+- Decision (allow/flag/block)
+- Risk score and tier
+- Detected signals
+- Evaluation latency
+
+### `cis:status`
+
+Show overall CIS integration status and diagnostics.
+
+```bash
+php artisan cis:status
+```
+
+**Output:**
+- Configuration check
+- Backend health status
+- Queue connection status
+- Timeout settings
+- Registered middleware
+- Recent webhook activity
+- Success rate metrics
+
+## Event Subscriber
+
+Auto-dispatch CIS webhooks when Laravel events fire.
+
+### Setup
+
+Enable auto-dispatch in `config/cis.php`:
+
+```php
+'auto_dispatch' => env('CIS_AUTO_DISPATCH', true),
+```
+
+Or in `.env`:
+
+```env
+CIS_AUTO_DISPATCH=true
+```
+
+The event subscriber will automatically listen for and forward these events:
+
+- `App\Events\BookingCreated`, `BookingCancelled`, `BookingCompleted`, `BookingUpdated`
+- `App\Events\PaymentInitiated`, `PaymentCompleted`, `PaymentFailed`
+- `App\Events\MessageSent`, `MessageEdited`
+- `App\Events\ProviderRegistered`, `ProviderVerified`, `ProviderProfileUpdated`
+- `App\Events\RatingSubmitted`
+- `App\Events\DisputeFiled`, `DisputeResolved`
+
+### Custom Events
+
+If your application uses different event names, you can manually register the subscriber or extend it:
+
+```php
+// In EventServiceProvider
+use QwickServices\CIS\Listeners\CISEventSubscriber;
+
+protected $subscribe = [
+    CISEventSubscriber::class,
+];
+```
+
+## Route Macros
+
+Use fluent route macros for cleaner CIS middleware registration.
+
+### Registration
+
+Route macros are automatically registered by the service provider.
+
+### Usage
+
+```php
+use Illuminate\Support\Facades\Route;
+
+// Using cisBooking() macro
+Route::post('/bookings', [BookingController::class, 'store'])
+    ->cisBooking();
+
+// Using cisPayment() macro
+Route::post('/payments', [PaymentController::class, 'store'])
+    ->cisPayment();
+
+// Using cisEvaluate() macro
+Route::post('/bookings', [BookingController::class, 'store'])
+    ->cisEvaluate('booking');
+
+Route::post('/payments', [PaymentController::class, 'store'])
+    ->cisEvaluate('payment');
+```
+
+**Available macros:**
+- `cisBooking()` — Add CISEvaluateBooking middleware
+- `cisPayment()` — Add CISEvaluatePayment middleware
+- `cisEvaluate(string $actionType)` — Generic evaluation middleware
+
+## Middleware Groups
+
+Register all CIS middleware at once using the helper class.
+
+### In `app/Http/Kernel.php`:
+
+```php
+use QwickServices\CIS\Http\CISMiddlewareGroup;
+
+protected $middlewareGroups = [
+    'web' => [
+        // ...
+    ],
+    'api' => [
+        // ...
+    ],
+    'cis' => CISMiddlewareGroup::all(),
+];
+```
+
+Or register middleware aliases:
+
+```php
+protected $middlewareAliases = [
+    // ... existing aliases
+    ...CISMiddlewareGroup::aliases(),
+];
+```
+
+Then use in routes:
+
+```php
+Route::middleware('cis.evaluate.booking')->post('/bookings', [...]);
+Route::middleware('cis.evaluate.payment')->post('/payments', [...]);
+```
+
+## Webhook Logging
+
+Track webhook dispatches in the database for monitoring and debugging.
+
+### Setup
+
+Run the migration:
+
+```bash
+php artisan migrate
+```
+
+Or publish and customize:
+
+```bash
+php artisan vendor:publish --tag=cis-migrations
+php artisan migrate
+```
+
+### Usage
+
+Query webhook logs:
+
+```php
+use QwickServices\CIS\Models\CISWebhookLog;
+
+// Get recent webhooks
+$recent = CISWebhookLog::recent(50);
+
+// Get failed webhooks
+$failed = CISWebhookLog::failed(50);
+
+// Get webhooks for specific event type
+$bookingEvents = CISWebhookLog::forEventType('booking.created', 100);
+
+// Get webhooks for specific user
+$userEvents = CISWebhookLog::forUser('user-123', 50);
+
+// Calculate success rate (last 24 hours)
+$successRate = CISWebhookLog::successRate(24); // Returns percentage
+
+// Average attempts for successful webhooks
+$avgAttempts = CISWebhookLog::averageAttempts(24);
+```
+
+### Schema
+
+The `cis_webhook_log` table tracks:
+- Event type and idempotency key
+- User ID
+- Full payload (JSON)
+- Response status and body
+- Success/failure status
+- Number of attempts
+- Dispatch and completion timestamps
+- Error messages
+
 ## Troubleshooting
 
 ### "CIS webhook secret is not configured"
@@ -536,6 +782,7 @@ CIS_RETRY_DELAY_MS=2000
 1. Verify CIS backend is running: `curl http://localhost:3001/api/health`
 2. Check `CIS_BASE_URL` in `.env`
 3. Ensure network connectivity
+4. Run `php artisan cis:health` for detailed diagnostics
 
 ### Webhooks not being sent
 
@@ -547,7 +794,9 @@ CIS_RETRY_DELAY_MS=2000
 **Debug steps:**
 1. Enable debug mode: `CIS_DEBUG=true`
 2. Check logs: `tail -f storage/logs/laravel.log | grep CIS`
-3. Test health check: `php artisan tinker`, then `CIS::healthCheck()`
+3. Test health check: `php artisan cis:health`
+4. Test webhook: `php artisan cis:test-webhook`
+5. Check webhook log table: `CISWebhookLog::recent(10)`
 
 ### Evaluation timeouts
 
@@ -557,6 +806,7 @@ CIS_RETRY_DELAY_MS=2000
 1. Optimize CIS backend performance
 2. Scale CIS horizontally
 3. Check database query performance in CIS
+4. Run `php artisan cis:evaluate` to test latency
 
 **Do not increase `CIS_EVALUATE_TIMEOUT` above 500ms** — this defeats the purpose of real-time evaluation.
 
@@ -569,6 +819,8 @@ CIS_RETRY_DELAY_MS=2000
 - Different secrets in different environments
 - Secrets containing special characters (ensure proper escaping)
 
+**Test:** Run `php artisan cis:test-webhook` to verify authentication.
+
 ### 503 errors in fail-closed mode
 
 **Cause:** CIS backend unreachable and `CIS_FAIL_OPEN=false`.
@@ -576,12 +828,186 @@ CIS_RETRY_DELAY_MS=2000
 **Solution:**
 1. Fix CIS connectivity issue
 2. Switch to fail-open mode temporarily: `CIS_FAIL_OPEN=true`
+3. Run `php artisan cis:status` to diagnose
 
 ## Testing
 
-### Unit Testing
+### Using CISFake
 
-Mock the CIS client in your tests:
+The package provides a dedicated test fake for easy testing without mocking.
+
+#### Basic Usage
+
+```php
+use QwickServices\CIS\Facades\CIS;
+use Tests\TestCase;
+
+class BookingTest extends TestCase
+{
+    public function test_booking_is_allowed()
+    {
+        $fake = CIS::fake();
+        $fake->fakeAllow();
+
+        // Perform booking action
+        $response = $this->post('/bookings', [
+            'user_id' => 123,
+            'provider_id' => 456,
+            'amount' => 150.00,
+        ]);
+
+        $response->assertSuccessful();
+
+        // Assert evaluation was performed
+        $fake->assertEvaluated('booking.create');
+    }
+
+    public function test_booking_is_blocked()
+    {
+        $fake = CIS::fake();
+        $fake->fakeBlock('High risk user');
+
+        $response = $this->post('/bookings', [
+            'user_id' => 123,
+            'provider_id' => 456,
+        ]);
+
+        $response->assertStatus(403);
+        $fake->assertEvaluated('booking.create');
+    }
+
+    public function test_booking_is_flagged()
+    {
+        $fake = CIS::fake();
+        $fake->fakeFlag('Suspicious pattern', ['RAPID_BOOKING']);
+
+        $response = $this->post('/bookings', [
+            'user_id' => 123,
+            'provider_id' => 456,
+        ]);
+
+        $response->assertSuccessful();
+        $response->assertHeader('X-CIS-Flagged', 'true');
+        $fake->assertEvaluated('booking.create');
+    }
+}
+```
+
+#### Webhook Testing
+
+```php
+public function test_webhook_sent_on_booking_creation()
+{
+    $fake = CIS::fake();
+    $fake->fakeAllow();
+
+    // Create booking
+    $booking = Booking::create([...]);
+
+    // Manually dispatch (or use observer/event)
+    app(CISEventDispatcher::class)->dispatchBookingCreated($booking);
+
+    // Assert webhook was sent
+    $fake->assertWebhookSent('booking.created');
+
+    // Assert with payload verification
+    $fake->assertWebhookSent('booking.created', function ($payload) use ($booking) {
+        return $payload['booking_id'] === $booking->id;
+    });
+}
+
+public function test_multiple_webhooks()
+{
+    $fake = CIS::fake();
+
+    // Dispatch multiple events
+    app(CISEventDispatcher::class)->dispatchBookingCreated($booking);
+    app(CISEventDispatcher::class)->dispatchPaymentCompleted($payment);
+
+    // Assert both webhooks sent
+    $fake->assertWebhookSent('booking.created');
+    $fake->assertWebhookSent('payment.completed');
+
+    // Assert specific webhook not sent
+    $fake->assertWebhookNotSent('booking.cancelled');
+}
+```
+
+#### Custom Responses
+
+```php
+public function test_custom_evaluation_response()
+{
+    $fake = CIS::fake();
+
+    $fake->fakeEvaluateResponse(
+        decision: 'flag',
+        score: 65,
+        tier: 'medium',
+        reason: 'Multiple signals detected',
+        signals: ['RAPID_BOOKING', 'OFF_PLATFORM_INTENT'],
+        enforcementId: 'enforcement-uuid-123',
+    );
+
+    $evaluation = CIS::evaluate(
+        actionType: 'booking.create',
+        userId: '123',
+    );
+
+    $this->assertEquals('flag', $evaluation->decision);
+    $this->assertEquals(65, $evaluation->riskScore);
+    $this->assertTrue($evaluation->hasSignal('RAPID_BOOKING'));
+}
+```
+
+#### Multiple Responses (Queue)
+
+```php
+public function test_multiple_evaluations()
+{
+    $fake = CIS::fake();
+
+    // Queue multiple responses
+    $fake->fakeAllow('First evaluation');
+    $fake->fakeFlag('Second evaluation');
+    $fake->fakeBlock('Third evaluation');
+
+    // Each evaluation consumes one queued response
+    $eval1 = CIS::evaluate('booking.create', 'user-1');
+    $this->assertTrue($eval1->isAllowed());
+
+    $eval2 = CIS::evaluate('booking.create', 'user-2');
+    $this->assertTrue($eval2->isFlagged());
+
+    $eval3 = CIS::evaluate('booking.create', 'user-3');
+    $this->assertTrue($eval3->isBlocked());
+}
+```
+
+#### Assertions
+
+**Available assertions:**
+- `assertWebhookSent(string $eventType, ?callable $callback = null)` — Assert webhook sent
+- `assertWebhookNotSent(string $eventType)` — Assert webhook not sent
+- `assertEvaluated(string $actionType, ?string $userId = null)` — Assert evaluation performed
+- `assertNotEvaluated()` — Assert no evaluations performed
+- `assertNothingSent()` — Assert no webhooks sent
+
+**Inspection methods:**
+- `getSentWebhooks()` — Get all sent webhooks
+- `getSentWebhooksOfType(string $eventType)` — Get webhooks of specific type
+- `getEvaluations()` — Get all performed evaluations
+- `webhookCount()` — Count sent webhooks
+- `evaluationCount()` — Count performed evaluations
+
+**Reset:**
+```php
+$fake->reset(); // Clear all recorded webhooks and evaluations
+```
+
+### Traditional Mocking
+
+If you prefer mocking with Mockery:
 
 ```php
 use QwickServices\CIS\CISClient;
@@ -632,6 +1058,21 @@ public function test_real_cis_integration()
     $this->assertInstanceOf(EvaluateResponse::class, $evaluation);
     $this->assertContains($evaluation->decision, ['allow', 'flag', 'block']);
 }
+```
+
+### Test Environment Configuration
+
+In `phpunit.xml` or `.env.testing`:
+
+```xml
+<php>
+    <env name="CIS_ENABLED" value="false"/>
+    <!-- Or use a test CIS instance -->
+    <env name="CIS_BASE_URL" value="http://localhost:3001"/>
+    <env name="CIS_WEBHOOK_SECRET" value="test-secret"/>
+    <env name="CIS_ASYNC" value="false"/>
+    <env name="CIS_FAIL_OPEN" value="true"/>
+</php>
 ```
 
 ## Security Considerations

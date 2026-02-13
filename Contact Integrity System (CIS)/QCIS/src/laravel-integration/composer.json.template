@@ -1,0 +1,52 @@
+{
+    "name": "qwickservices/cis-laravel",
+    "description": "Laravel integration package for QwickServices Contact Integrity System",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "QwickServices",
+            "email": "dev@qwickservices.com"
+        }
+    ],
+    "require": {
+        "php": "^8.1",
+        "illuminate/support": "^10.0|^11.0",
+        "illuminate/console": "^10.0|^11.0",
+        "illuminate/database": "^10.0|^11.0",
+        "illuminate/events": "^10.0|^11.0",
+        "illuminate/routing": "^10.0|^11.0",
+        "guzzlehttp/guzzle": "^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0",
+        "orchestra/testbench": "^8.0|^9.0",
+        "mockery/mockery": "^1.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "QwickServices\\CIS\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "QwickServices\\CIS\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "QwickServices\\CIS\\CISServiceProvider"
+            ],
+            "aliases": {
+                "CIS": "QwickServices\\CIS\\Facades\\CIS"
+            }
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "test-coverage": "vendor/bin/phpunit --coverage-html coverage"
+    }
+}
