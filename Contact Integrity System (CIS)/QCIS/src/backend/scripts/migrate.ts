@@ -147,7 +147,7 @@ async function runMigrations(): Promise<void> {
 
     // Get all migration files
     const allMigrationFiles = await getMigrationFiles();
-    console.log(`Total migrations: ${allMigrationFiles.size}`);
+    console.log(`Total migrations: ${allMigrationFiles.length}`);
     console.log('───────────────────────────────────────────────────────────');
 
     // Filter to pending migrations

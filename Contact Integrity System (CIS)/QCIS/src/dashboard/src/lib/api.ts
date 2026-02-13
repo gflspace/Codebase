@@ -576,9 +576,9 @@ export const getAlertStats = (token: string, params: Record<string, string>) => 
   return request<{ data: AlertStatsData }>(`/stats/v2/alert-stats${qs}`, { token });
 };
 
-// ─── Leakage Funnel (Phase 3A) ──────────────────────────────────
+// ─── Leakage Funnel Stats (Phase 3A — extended) ─────────────────
 
-export interface LeakageFunnelData {
+export interface LeakageFunnelStatsData {
   funnel: Record<string, number>;
   destinations: Array<{ platform: string; count: number }>;
   revenue: { total_loss: number; avg_loss: number; confirmed_leakages: number };
@@ -587,5 +587,5 @@ export interface LeakageFunnelData {
 
 export const getLeakageFunnelStats = (token: string, params?: Record<string, string>) => {
   const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-  return request<{ data: LeakageFunnelData }>(`/stats/v2/leakage-funnel${qs}`, { token });
+  return request<{ data: LeakageFunnelStatsData }>(`/stats/v2/leakage-funnel${qs}`, { token });
 };

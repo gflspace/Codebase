@@ -10,6 +10,8 @@
     "migrate": "tsx src/database/migrate.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "vitest run tests/e2e/ --config vitest.e2e.config.ts",
+    "test:e2e:full": "node tests/e2e/run-e2e.js",
     "lint": "eslint src/",
     "format": "prettier --write src/"
   },
