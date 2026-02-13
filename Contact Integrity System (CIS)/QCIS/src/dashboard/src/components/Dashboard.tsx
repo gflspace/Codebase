@@ -19,6 +19,7 @@ import BookingTimeline from './modules/BookingTimeline';
 import FinancialFlow from './modules/FinancialFlow';
 import NetworkExplorer from './modules/NetworkExplorer';
 import LeakageFunnel from './modules/LeakageFunnel';
+import DataSync from './modules/DataSync';
 
 const MODULES = [
   { id: 'intelligence', label: 'Intelligence', permission: 'intelligence.view' },
@@ -36,6 +37,7 @@ const MODULES = [
   { id: 'network', label: 'Network Explorer', permission: 'intelligence.view' },
   { id: 'leakage', label: 'Leakage Funnel', permission: 'intelligence.view' },
   { id: 'rules', label: 'Rules Engine', permission: 'rules.view' },
+  { id: 'sync', label: 'Data Sync', permission: 'sync.view' },
   { id: 'settings', label: 'Settings', permission: 'settings.view' },
 ] as const;
 
@@ -200,6 +202,7 @@ export default function Dashboard() {
         {activeModule === 'network' && <NetworkExplorer />}
         {activeModule === 'leakage' && <LeakageFunnel />}
         {activeModule === 'rules' && <RulesEngine />}
+        {activeModule === 'sync' && <DataSync />}
         {activeModule === 'settings' && <SettingsModule />}
       </main>
     </div>

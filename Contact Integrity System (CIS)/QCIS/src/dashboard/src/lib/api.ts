@@ -589,3 +589,66 @@ export const getLeakageFunnelStats = (token: string, params?: Record<string, str
   const qs = params ? '?' + new URLSearchParams(params).toString() : '';
   return request<{ data: LeakageFunnelStatsData }>(`/stats/v2/leakage-funnel${qs}`, { token });
 };
+
+// ─── Data Sync Management ───────────────────────────────────────
+
+export interface SyncTableStatus {
+  source_table: string;
+  enabled: boolean;
+  last_synced_at: string;
+  last_run_at: string | null;
+  last_run_duration_ms: number | null;
+  records_synced: number;
+  last_error: string | null;
+}
+
+export interface SyncStatus {
+  enabled: boolean;
+  running: boolean;
+  intervalMs: number;
+  tables: SyncTableStatus[];
+  externalDbConnected: boolean;
+}
+
+export interface SyncRunLog {
+  id: string;
+  source_table: string;
+  started_at: string;
+  finished_at: string | null;
+  records_found: number;
+  records_processed: number;
+  records_failed: number;
+  events_emitted: number;
+  error: string | null;
+}
+
+export const getSyncStatus = (token: string) =>
+  request<SyncStatus>('/sync/status', { token });
+
+export const getSyncHistory = (token: string, limit?: number) =>
+  request<{ runs: SyncRunLog[]; total: number }>(`/sync/history?limit=${limit || 50}`, { token });
+
+export const triggerSync = (token: string, table?: string) =>
+  request<{ message: string; results: unknown[] }>('/sync/trigger', {
+    method: 'POST',
+    body: table ? { table } : {},
+    token,
+  });
+
+export const toggleTableSync = (token: string, table: string, enabled: boolean) =>
+  request<{ message: string }>(`/sync/tables/${table}`, {
+    method: 'PUT',
+    body: { enabled },
+    token,
+  });
+
+export const resetTableWatermark = (token: string, table: string) =>
+  request<{ message: string }>(`/sync/tables/${table}/reset`, {
+    method: 'POST',
+    token,
+  });
+
+export const testSyncConnection = (token: string) =>
+  request<{ connected: boolean; host?: string; port?: number; database?: string; error?: string }>('/sync/test-connection', {
+    token,
+  });

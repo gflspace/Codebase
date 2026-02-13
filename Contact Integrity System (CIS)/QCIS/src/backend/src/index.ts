@@ -58,6 +58,8 @@ import evaluateRoutes from './api/routes/evaluate';
 import alertSubscriptionRoutes from './api/routes/alert-subscriptions';
 import adminRulesRoutes from './api/routes/admin-rules';
 import streamRoutes from './api/routes/stream';
+import syncRoutes from './api/routes/sync';
+import { startSync, stopSync } from './sync';
 
 const app = express();
 
@@ -90,6 +92,7 @@ app.use('/api/ratings', writeLimiter);
 app.use('/api/evaluate', writeLimiter);
 app.use('/api/alert-subscriptions', writeLimiter);
 app.use('/api/admin/rules', writeLimiter);
+app.use('/api/sync', writeLimiter);
 
 // Root route
 app.get('/', (_req, res) => {
@@ -132,6 +135,7 @@ app.use('/api/evaluate', evaluateRoutes);
 app.use('/api/alert-subscriptions', alertSubscriptionRoutes);
 app.use('/api/admin/rules', adminRulesRoutes);
 app.use('/api/stream', streamRoutes);
+app.use('/api/sync', syncRoutes);
 
 // Error handling
 app.use(notFound);
@@ -214,6 +218,18 @@ async function start(): Promise<void> {
   // Start SLA escalation service (Layer 8)
   startSlaEscalation();
 
+  // Start data sync service (QwickServices pull architecture)
+  if (config.sync.enabled) {
+    const syncStarted = await startSync();
+    if (syncStarted) {
+      console.log('  Data sync: active (pulling from QwickServices)');
+    } else {
+      console.warn('  Data sync: FAILED to start — check SYNC_DB_* configuration');
+    }
+  } else {
+    console.log('  Data sync: disabled (set SYNC_ENABLED=true to enable)');
+  }
+
   // Keep connections alive but let shutdown close them
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;
@@ -248,6 +264,14 @@ async function shutdown(signal: string): Promise<void> {
 
   // 2. Stop SLA escalation service
   stopSlaEscalation();
+
+  // 2.5. Stop data sync service
+  try {
+    await stopSync();
+    console.log(`[Shutdown] Data sync stopped (${Date.now() - shutdownStart}ms)`);
+  } catch {
+    // Non-critical
+  }
 
   // 3. Close Redis connection (if durable bus is active)
   try {

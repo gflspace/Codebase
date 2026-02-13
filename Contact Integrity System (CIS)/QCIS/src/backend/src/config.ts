@@ -98,6 +98,21 @@ export const config = {
     webhookUrl: optional('SLACK_WEBHOOK_URL', ''),
     enabled: optional('SLACK_WEBHOOK_URL', '') !== '',
   },
+
+  sync: {
+    enabled: optional('SYNC_ENABLED', 'false') === 'true',
+    intervalMs: parseInt(optional('SYNC_INTERVAL_MS', '30000'), 10),  // 30 seconds default
+    batchSize: parseInt(optional('SYNC_BATCH_SIZE', '100'), 10),
+    db: {
+      host: optional('SYNC_DB_HOST', 'localhost'),
+      port: parseInt(optional('SYNC_DB_PORT', '5432'), 10),
+      name: optional('SYNC_DB_NAME', 'qwickservices'),
+      user: optional('SYNC_DB_USER', 'cis_readonly'),
+      password: optional('SYNC_DB_PASSWORD', ''),
+      ssl: optional('SYNC_DB_SSL', 'false') === 'true',
+      poolMax: parseInt(optional('SYNC_DB_POOL_MAX', '5'), 10),
+    },
+  },
 } as const;
 
 export function validateConfig(): string[] {

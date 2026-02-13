@@ -45,7 +45,22 @@ vi.mock('../../src/config', () => ({
     rateLimit: { windowMs: 60000, max: 10000, aiMax: 10000, writeMax: 10000 },
     redis: { url: '' },
     eventBusBackend: 'memory' as const,
+    sync: {
+      enabled: false,
+      intervalMs: 30000,
+      batchSize: 100,
+      db: { host: 'localhost', port: 5432, name: 'qwickservices', user: 'test', password: 'test', ssl: false, poolMax: 2 },
+    },
   },
+}));
+
+// ─── Mock Sync Connection (prevent external DB calls in tests) ──
+
+vi.mock('../../src/sync/connection', () => ({
+  getExternalPool: vi.fn(),
+  externalQuery: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
+  testExternalConnection: vi.fn().mockResolvedValue(false),
+  closeExternalPool: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ─── Mock Event Emission (fire-and-forget helpers) ───────────
@@ -138,6 +153,7 @@ const ALL_PERMISSIONS = [
   'category.view', 'system_health.view', 'messages.view',
   'rules.view', 'rules.manage',
   'alerts.ai_summary', 'appeals.ai_analysis', 'risk.ai_patterns', 'risk.ai_predictive',
+  'sync.view', 'sync.manage',
 ];
 
 export const mockResolvePermissions = vi.fn().mockResolvedValue(ALL_PERMISSIONS);
