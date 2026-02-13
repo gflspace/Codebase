@@ -1,5 +1,6 @@
 import { Pool, PoolClient } from 'pg';
 import { config } from '../config';
+import { recordDbQuery } from '../api/middleware/metrics';
 
 let pool: Pool | null = null;
 
@@ -12,9 +13,11 @@ export function getPool(): Pool {
       user: config.db.user,
       password: config.db.password,
       ssl: config.db.ssl ? { rejectUnauthorized: false } : false,
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
+      min: config.db.poolMin,
+      max: config.db.poolMax,
+      idleTimeoutMillis: config.db.poolIdleTimeoutMs,
+      connectionTimeoutMillis: config.db.poolConnectionTimeoutMs,
+      query_timeout: parseInt(config.db.statementTimeout, 10),
     });
 
     pool.on('error', (err) => {
@@ -29,6 +32,10 @@ export async function query(text: string, params?: unknown[]) {
   const start = Date.now();
   const result = await pool.query(text, params);
   const duration = Date.now() - start;
+
+  // Record metrics
+  recordDbQuery(duration);
+
   if (config.logLevel === 'debug') {
     console.log('[DB]', { text: text.substring(0, 80), duration, rows: result.rowCount });
   }
@@ -73,4 +80,15 @@ export async function closePool(): Promise<void> {
     await pool.end();
     pool = null;
   }
+}
+
+export function getPoolStats(): { total: number; idle: number; waiting: number } {
+  if (!pool) {
+    return { total: 0, idle: 0, waiting: 0 };
+  }
+  return {
+    total: pool.totalCount,
+    idle: pool.idleCount,
+    waiting: pool.waitingCount,
+  };
 }

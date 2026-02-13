@@ -123,7 +123,7 @@ function FieldConditionRow({
         <select
           value={String(condition.value)}
           onChange={(e) => handleValueChange(e.target.value)}
-          className="border border-gray-300 rounded px-2 py-1 text-sm"
+          className="border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
         >
           <option value="true">true</option>
           <option value="false">false</option>
@@ -146,7 +146,7 @@ function FieldConditionRow({
                     const newVals = selected ? vals.filter((v) => v !== tv) : [...vals, tv];
                     onChange({ ...condition, value: newVals });
                   }}
-                  className={`px-2 py-0.5 text-xs rounded border ${selected ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-white border-gray-300 text-gray-500'}`}
+                  className={`px-2 py-0.5 text-xs rounded border ${selected ? 'bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-200' : 'bg-white dark:bg-slate-700 border-gray-300 dark:border-slate-600 text-gray-500 dark:text-slate-400'}`}
                 >
                   {tv}
                 </button>
@@ -159,7 +159,7 @@ function FieldConditionRow({
         <select
           value={String(condition.value)}
           onChange={(e) => handleValueChange(e.target.value)}
-          className="border border-gray-300 rounded px-2 py-1 text-sm"
+          className="border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
         >
           {TIER_VALUES.map((tv) => <option key={tv} value={tv}>{tv}</option>)}
         </select>
@@ -171,7 +171,7 @@ function FieldConditionRow({
         <select
           value={String(condition.value)}
           onChange={(e) => handleValueChange(e.target.value)}
-          className="border border-gray-300 rounded px-2 py-1 text-sm"
+          className="border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
         >
           {USER_TYPE_VALUES.map((ut) => <option key={ut} value={ut}>{ut}</option>)}
         </select>
@@ -184,7 +184,7 @@ function FieldConditionRow({
         type={fieldType === 'number' ? 'number' : 'text'}
         value={displayValue}
         onChange={(e) => handleValueChange(e.target.value)}
-        className="border border-gray-300 rounded px-2 py-1 text-sm flex-1 min-w-[80px]"
+        className="border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-sm flex-1 min-w-[80px] bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
         placeholder={condition.operator === 'in' || condition.operator === 'not_in' ? 'val1, val2, ...' : 'value'}
       />
     );
@@ -195,7 +195,7 @@ function FieldConditionRow({
       <select
         value={condition.field}
         onChange={(e) => handleFieldChange(e.target.value)}
-        className="border border-gray-300 rounded px-2 py-1 text-sm"
+        className="border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
       >
         {FIELDS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
       </select>
@@ -203,14 +203,14 @@ function FieldConditionRow({
       <select
         value={condition.operator}
         onChange={(e) => onChange({ ...condition, operator: e.target.value })}
-        className="border border-gray-300 rounded px-2 py-1 text-sm w-20"
+        className="border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-sm w-20 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
       >
         {ops.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}
       </select>
 
       {renderValueInput()}
 
-      <button type="button" onClick={onRemove} className="text-red-400 hover:text-red-600 text-xs px-1">
+      <button type="button" onClick={onRemove} className="text-red-400 dark:text-red-500 hover:text-red-600 dark:hover:text-red-400 text-xs px-1">
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
       </button>
     </div>
@@ -270,8 +270,8 @@ function ConditionGroup({
     onChange(isAll ? { any: children } : { all: children });
   };
 
-  const borderColor = depth === 0 ? 'border-blue-200' : depth === 1 ? 'border-purple-200' : 'border-gray-200';
-  const bgColor = depth === 0 ? 'bg-blue-50/50' : depth === 1 ? 'bg-purple-50/30' : 'bg-gray-50/50';
+  const borderColor = depth === 0 ? 'border-blue-200 dark:border-blue-800' : depth === 1 ? 'border-purple-200 dark:border-purple-800' : 'border-gray-200 dark:border-slate-700';
+  const bgColor = depth === 0 ? 'bg-blue-50/50 dark:bg-blue-950/30' : depth === 1 ? 'bg-purple-50/30 dark:bg-purple-950/20' : 'bg-gray-50/50 dark:bg-slate-800/30';
 
   return (
     <div className={`border ${borderColor} ${bgColor} rounded-lg p-3 ${depth > 0 ? 'ml-4' : ''}`}>
@@ -282,18 +282,18 @@ function ConditionGroup({
             onClick={toggleGroupType}
             className={`px-3 py-1 text-xs font-semibold rounded-full transition-colors ${
               isAll
-                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-800'
+                : 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-800'
             }`}
           >
             {groupType.toUpperCase()}
           </button>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-gray-400 dark:text-slate-500">
             {isAll ? 'All conditions must match' : 'Any condition can match'}
           </span>
         </div>
         {depth > 0 && (
-          <button type="button" onClick={onRemove} className="text-red-400 hover:text-red-600 text-xs">Remove Group</button>
+          <button type="button" onClick={onRemove} className="text-red-400 dark:text-red-500 hover:text-red-600 dark:hover:text-red-400 text-xs">Remove Group</button>
         )}
       </div>
 
@@ -308,12 +308,12 @@ function ConditionGroup({
       ))}
 
       <div className="flex items-center gap-2 mt-2">
-        <button type="button" onClick={addField} className="text-xs text-blue-600 hover:text-blue-800">+ Add Condition</button>
+        <button type="button" onClick={addField} className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">+ Add Condition</button>
         {depth < 2 && (
           <>
-            <span className="text-gray-300">|</span>
-            <button type="button" onClick={() => addGroup('all')} className="text-xs text-purple-600 hover:text-purple-800">+ ALL Group</button>
-            <button type="button" onClick={() => addGroup('any')} className="text-xs text-amber-600 hover:text-amber-800">+ ANY Group</button>
+            <span className="text-gray-300 dark:text-slate-600">|</span>
+            <button type="button" onClick={() => addGroup('all')} className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300">+ ALL Group</button>
+            <button type="button" onClick={() => addGroup('any')} className="text-xs text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300">+ ANY Group</button>
           </>
         )}
       </div>
@@ -355,19 +355,19 @@ export default function ConditionBuilder({ value, onChange }: ConditionBuilderPr
     <div>
       {/* Mode toggle */}
       <div className="flex items-center justify-between mb-2">
-        <label className="block text-sm font-medium text-gray-700">Conditions</label>
-        <div className="flex border border-gray-300 rounded-md overflow-hidden text-xs">
+        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Conditions</label>
+        <div className="flex border border-gray-300 dark:border-slate-600 rounded-md overflow-hidden text-xs">
           <button
             type="button"
             onClick={() => setMode('visual')}
-            className={`px-3 py-1 ${mode === 'visual' ? 'bg-cis-green text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            className={`px-3 py-1 ${mode === 'visual' ? 'bg-cis-green text-white' : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700'}`}
           >
             Visual
           </button>
           <button
             type="button"
             onClick={() => setMode('json')}
-            className={`px-3 py-1 ${mode === 'json' ? 'bg-cis-green text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            className={`px-3 py-1 ${mode === 'json' ? 'bg-cis-green text-white' : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700'}`}
           >
             JSON
           </button>
@@ -375,7 +375,7 @@ export default function ConditionBuilder({ value, onChange }: ConditionBuilderPr
       </div>
 
       {parseError && mode === 'visual' && (
-        <div className="text-xs text-amber-600 mb-2">{parseError}</div>
+        <div className="text-xs text-amber-600 dark:text-amber-400 mb-2">{parseError}</div>
       )}
 
       {mode === 'visual' ? (
@@ -390,11 +390,11 @@ export default function ConditionBuilder({ value, onChange }: ConditionBuilderPr
           <textarea
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono"
+            className="w-full border border-gray-300 dark:border-slate-600 rounded-md px-3 py-2 text-sm font-mono bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
             rows={8}
             placeholder='{ "all": [{ "field": "score", "operator": "gte", "value": 75 }] }'
           />
-          <p className="text-xs text-gray-400 mt-1">Supports: all/any groups, operators: eq, neq, gt, gte, lt, lte, in, not_in, contains</p>
+          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">Supports: all/any groups, operators: eq, neq, gt, gte, lt, lte, in, not_in, contains</p>
         </>
       )}
     </div>

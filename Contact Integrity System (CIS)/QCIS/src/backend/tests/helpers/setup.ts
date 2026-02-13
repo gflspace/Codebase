@@ -117,6 +117,17 @@ vi.mock('../../src/events/redis', () => ({
   testRedisConnection: () => Promise.resolve(false),
 }));
 
+// ─── Mock Cache (prevent cross-test state leakage) ──────
+
+vi.mock('../../src/cache', () => ({
+  cacheGet: vi.fn().mockResolvedValue(null),
+  cacheSet: vi.fn().mockResolvedValue(undefined),
+  cacheDelete: vi.fn().mockResolvedValue(undefined),
+  cacheDeletePattern: vi.fn().mockResolvedValue(undefined),
+  getCacheStats: vi.fn().mockReturnValue({ hits: 0, misses: 0, size: 0 }),
+  clearMemoryCache: vi.fn(),
+}));
+
 // ─── Mock Permissions ────────────────────────────────────────
 
 const ALL_PERMISSIONS = [

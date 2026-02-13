@@ -39,6 +39,11 @@ export const config = {
     user: optional('DB_USER', 'cis_app_user'),
     password: optional('DB_PASSWORD', 'changeme_dev_password'),
     ssl: optional('DB_SSL', 'false') === 'true',
+    poolMin: parseInt(optional('DB_POOL_MIN', '2'), 10),
+    poolMax: parseInt(optional('DB_POOL_MAX', '20'), 10),
+    poolIdleTimeoutMs: parseInt(optional('DB_POOL_IDLE_TIMEOUT_MS', '30000'), 10),
+    poolConnectionTimeoutMs: parseInt(optional('DB_POOL_CONNECTION_TIMEOUT_MS', '5000'), 10),
+    statementTimeout: optional('DB_STATEMENT_TIMEOUT', '30000'),  // ms
   },
 
   jwt: {

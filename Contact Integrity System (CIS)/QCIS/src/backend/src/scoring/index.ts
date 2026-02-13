@@ -7,6 +7,7 @@ import { query } from '../database/connection';
 import { generateId } from '../shared/utils';
 import { config } from '../config';
 import { DomainEvent, EventType } from '../events/types';
+import { cacheGet, cacheSet, cacheDelete } from '../cache';
 
 // V1 imports (3-layer model)
 import {
@@ -54,10 +55,35 @@ export interface ScoringResult {
  * Delegates to V1 or V2 pipeline based on config.scoringModel.
  */
 export async function computeRiskScore(userId: string): Promise<ScoringResult> {
-  if (config.scoringModel === '5-component') {
-    return computeRiskScoreV2(userId);
+  // Check cache first
+  const cacheKey = `score:${userId}`;
+  try {
+    const cached = await cacheGet<ScoringResult>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  } catch (err) {
+    // Cache failure is non-blocking
+    console.warn('[Scoring] Cache read failed, computing score:', err);
   }
-  return computeRiskScoreV1(userId);
+
+  // Compute score
+  let result: ScoringResult;
+  if (config.scoringModel === '5-component') {
+    result = await computeRiskScoreV2(userId);
+  } else {
+    result = await computeRiskScoreV1(userId);
+  }
+
+  // Cache result
+  try {
+    await cacheSet(cacheKey, result, { ttlSeconds: 60 });
+  } catch (err) {
+    // Cache failure is non-blocking
+    console.warn('[Scoring] Cache write failed:', err);
+  }
+
+  return result;
 }
 
 // ─── V1 Pipeline (3-layer, legacy) ─────────────────────────
@@ -167,6 +193,14 @@ async function persistAndReturn(
         modelVersion,
       ]
     );
+
+    // Invalidate cache when new score is inserted
+    try {
+      await cacheDelete(`score:${userId}`);
+      await cacheDelete(`eval:${userId}`);
+    } catch {
+      // Cache deletion is non-blocking
+    }
   } catch (err) {
     console.error('[Scoring] Failed to persist score:', err);
   }

@@ -24,6 +24,8 @@ import { registerAnomalyAlertConsumer } from './alerting/consumers/anomaly';
 import { registerClusterAlertConsumer } from './alerting/consumers/cluster';
 import { startSlaEscalation, stopSlaEscalation } from './alerting/sla-escalation';
 import { globalLimiter, aiLimiter, writeLimiter } from './api/middleware/rateLimit';
+import { metricsMiddleware } from './api/middleware/metrics';
+import { requestLogger } from './api/middleware/requestLogger';
 import { closeRedis, testRedisConnection } from './events/redis';
 import { getEventBus } from './events/bus';
 import { DurableEventBus } from './events/durable-bus';
@@ -66,6 +68,10 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: '1mb' }));
+
+// Observability middleware
+app.use(metricsMiddleware);
+app.use(requestLogger);
 
 // Rate limiting (GAP-04)
 app.use('/api', globalLimiter);

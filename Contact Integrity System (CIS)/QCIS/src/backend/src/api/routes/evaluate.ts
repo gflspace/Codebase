@@ -16,6 +16,7 @@ import { RiskTier } from '../../scoring/tiers';
 import { generateId } from '../../shared/utils';
 import { loadActiveRules, buildRuleContext, evaluateRules } from '../../rules';
 import { executeRuleSideEffects } from '../../rules/actions';
+import { cacheGet, cacheSet } from '../../cache';
 
 const router = Router();
 
@@ -104,19 +105,51 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    // Hot path: 2 indexed queries
-    const [scoreResult, signalResult] = await Promise.all([
-      query(
+    // Hot path: try cache first for score lookup
+    interface CachedScore {
+      id: string;
+      score: number;
+      tier: RiskTier;
+      factors: Record<string, unknown>;
+    }
+
+    let scoreResult: { rows: CachedScore[] };
+    try {
+      const cached = await cacheGet<CachedScore>(`eval:${user_id}`);
+      if (cached) {
+        scoreResult = { rows: [cached] };
+      } else {
+        const dbResult = await query(
+          'SELECT id, score, tier, factors FROM risk_scores WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+          [user_id]
+        );
+        scoreResult = dbResult as { rows: CachedScore[] };
+
+        // Cache for 30 seconds
+        if (scoreResult.rows.length > 0) {
+          try {
+            await cacheSet(`eval:${user_id}`, scoreResult.rows[0], { ttlSeconds: 30 });
+          } catch {
+            // Cache write failure is non-blocking
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Evaluate] Cache lookup failed, querying DB:', err);
+      const dbResult = await query(
         'SELECT id, score, tier, factors FROM risk_scores WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
         [user_id]
-      ),
-      query(
-        `SELECT signal_type, pattern_flags FROM risk_signals
-         WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
-         ORDER BY created_at DESC LIMIT 20`,
-        [user_id]
-      ),
-    ]);
+      );
+      scoreResult = dbResult as { rows: CachedScore[] };
+    }
+
+    // Signal query (not cached due to high variance)
+    const signalResult = await query(
+      `SELECT signal_type, pattern_flags FROM risk_signals
+       WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
+       ORDER BY created_at DESC LIMIT 20`,
+      [user_id]
+    );
 
     // No score = low risk, allow
     if (scoreResult.rows.length === 0) {

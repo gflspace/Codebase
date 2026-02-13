@@ -1,0 +1,180 @@
+# ═══════════════════════════════════════════════════════════════
+#  QwickServices CIS — Production Docker Compose Configuration
+# ═══════════════════════════════════════════════════════════════
+#
+# Usage:
+#   docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
+#
+# Prerequisites:
+#   - .env.production file exists and is populated (see .env.production.example)
+#   - Database migrations have been run (scripts/migrate.ts)
+#   - Initial admin user created (scripts/seed-admin.ts)
+#
+# ═══════════════════════════════════════════════════════════════
+
+version: '3.8'
+
+services:
+  # ─── PostgreSQL Database ─────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: cis-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${DB_NAME:-qwick_cis}
+      POSTGRES_USER: ${DB_USER:-cis_app_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.utf8"
+
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+    networks:
+      - cis-net
+
+    ports:
+      - "5432:5432"
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-cis_app_user} -d ${DB_NAME:-qwick_cis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # ─── Redis Cache & Event Bus ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: cis-redis
+    restart: unless-stopped
+
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+
+    volumes:
+      - redis_data:/data
+
+    networks:
+      - cis-net
+
+    ports:
+      - "6379:6379"
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  # ─── CIS Backend Application ─────────────────────────────────
+  cis-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: qcis-backend:latest
+    container_name: cis-backend
+    restart: unless-stopped
+
+    env_file:
+      - .env.production
+
+    environment:
+      # Override DB and Redis hosts to use container names
+      DB_HOST: postgres
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    networks:
+      - cis-net
+
+    ports:
+      - "3001:3001"
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # ─── Nginx Reverse Proxy ─────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: cis-nginx
+    restart: unless-stopped
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Uncomment for SSL certificates:
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+      # - ./nginx/ssl:/etc/nginx/ssl:ro
+
+    depends_on:
+      - cis-backend
+
+    networks:
+      - cis-net
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
+# ─── Networks ────────────────────────────────────────────────
+networks:
+  cis-net:
+    driver: bridge
+    name: cis-network
+
+# ─── Volumes ─────────────────────────────────────────────────
+volumes:
+  pg_data:
+    name: cis-postgres-data
+  redis_data:
+    name: cis-redis-data
