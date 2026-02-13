@@ -367,4 +367,43 @@ router.get(
   }
 );
 
+// ─── GET /device-clusters — Groups of users sharing devices ─────
+
+router.get(
+  '/device-clusters',
+  authenticateJWT,
+  requirePermission('intelligence.view'),
+  async (_req: Request, res: Response) => {
+    try {
+      const result = await query(
+        `SELECT d.device_hash,
+                array_agg(DISTINCT d.user_id) AS user_ids,
+                COUNT(DISTINCT d.user_id) AS user_count,
+                MAX(d.last_seen_at) AS last_seen,
+                MAX(d.os) AS os,
+                MAX(d.browser) AS browser
+         FROM user_devices d
+         GROUP BY d.device_hash
+         HAVING COUNT(DISTINCT d.user_id) > 1
+         ORDER BY user_count DESC
+         LIMIT 50`
+      );
+
+      res.json({
+        data: result.rows.map((r) => ({
+          device_hash: r.device_hash,
+          user_ids: r.user_ids,
+          user_count: parseInt(r.user_count, 10),
+          last_seen: r.last_seen,
+          os: r.os,
+          browser: r.browser,
+        })),
+      });
+    } catch (error) {
+      console.error('Intelligence device-clusters error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
 export default router;

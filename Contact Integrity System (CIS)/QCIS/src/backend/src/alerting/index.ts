@@ -4,6 +4,7 @@
 
 import { query } from '../database/connection';
 import { generateId } from '../shared/utils';
+import { dispatchNotification, AlertNotification } from './notifications';
 
 // ─── SLA Deadline Configuration ───────────────────────────────
 
@@ -89,16 +90,20 @@ export async function matchSubscriptions(alert: {
 }
 
 /**
- * Notify matched subscribers. Dashboard notifications are always logged.
- * Email/Slack are logged as intent for future integration.
+ * Notify matched subscribers. Dispatches to email, Slack, and dashboard channels.
  */
 export async function notifySubscribers(
   alertId: string,
-  subscriptions: AlertSubscription[]
+  subscriptions: AlertSubscription[],
+  alertDetails: AlertNotification,
 ): Promise<void> {
   for (const sub of subscriptions) {
     for (const channel of sub.channels) {
       try {
+        // Dispatch notification to the appropriate channel
+        await dispatchNotification(alertDetails, channel, sub.admin_user_id);
+
+        // Log the notification attempt in audit logs
         await query(
           `INSERT INTO audit_logs (id, actor, actor_type, action, entity_type, entity_id, details)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -174,7 +179,14 @@ export async function createAlert(params: CreateAlertParams): Promise<string | n
     });
 
     if (subscriptions.length > 0) {
-      await notifySubscribers(alertId, subscriptions);
+      await notifySubscribers(alertId, subscriptions, {
+        alert_id: alertId,
+        title: params.title,
+        description: params.description,
+        priority: params.priority,
+        user_id: params.user_id,
+        source: params.source,
+      });
       console.log(`[Alerting] Notified ${subscriptions.length} subscription(s) for alert ${alertId.slice(0, 8)}`);
     }
 

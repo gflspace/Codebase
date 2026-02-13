@@ -17,6 +17,7 @@ import RulesEngine from './modules/RulesEngine';
 import BookingTimeline from './modules/BookingTimeline';
 import FinancialFlow from './modules/FinancialFlow';
 import NetworkExplorer from './modules/NetworkExplorer';
+import LeakageFunnel from './modules/LeakageFunnel';
 
 const MODULES = [
   { id: 'intelligence', label: 'Intelligence', permission: 'intelligence.view' },
@@ -32,6 +33,7 @@ const MODULES = [
   { id: 'bookings', label: 'Bookings', permission: 'intelligence.view' },
   { id: 'financial', label: 'Financial', permission: 'intelligence.view' },
   { id: 'network', label: 'Network Explorer', permission: 'intelligence.view' },
+  { id: 'leakage', label: 'Leakage Funnel', permission: 'intelligence.view' },
   { id: 'rules', label: 'Rules Engine', permission: 'rules.view' },
   { id: 'settings', label: 'Settings', permission: 'settings.view' },
 ] as const;
@@ -177,6 +179,7 @@ export default function Dashboard() {
         {activeModule === 'bookings' && <BookingTimeline />}
         {activeModule === 'financial' && <FinancialFlow />}
         {activeModule === 'network' && <NetworkExplorer />}
+        {activeModule === 'leakage' && <LeakageFunnel />}
         {activeModule === 'rules' && <RulesEngine />}
         {activeModule === 'settings' && <SettingsModule />}
       </main>

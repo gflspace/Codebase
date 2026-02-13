@@ -79,4 +79,42 @@ export const config = {
   },
 
   eventBusBackend: optional('EVENT_BUS_BACKEND', 'memory') as 'memory' | 'redis',
+
+  smtp: {
+    host: optional('SMTP_HOST', ''),
+    port: parseInt(optional('SMTP_PORT', '587'), 10),
+    user: optional('SMTP_USER', ''),
+    password: optional('SMTP_PASSWORD', ''),
+    from: optional('SMTP_FROM', 'cis@qwickservices.com'),
+    enabled: optional('SMTP_HOST', '') !== '',
+  },
+
+  slack: {
+    webhookUrl: optional('SLACK_WEBHOOK_URL', ''),
+    enabled: optional('SLACK_WEBHOOK_URL', '') !== '',
+  },
 } as const;
+
+export function validateConfig(): string[] {
+  const warnings: string[] = [];
+
+  if (config.nodeEnv === 'production') {
+    if (config.jwt.secret === 'dev_jwt_secret_change_in_production') {
+      warnings.push('CRITICAL: JWT_SECRET is using default value');
+    }
+    if (config.hmac.secret === 'dev_hmac_secret_change_in_production') {
+      warnings.push('CRITICAL: HMAC_SECRET is using default value');
+    }
+    if (config.webhook.secret === 'dev_webhook_secret_change_in_production') {
+      warnings.push('CRITICAL: WEBHOOK_SECRET is using default value');
+    }
+    if (!config.db.ssl) {
+      warnings.push('WARNING: Database SSL is disabled');
+    }
+    if (config.shadowMode) {
+      warnings.push('INFO: Shadow mode is enabled — enforcement actions will be logged but not executed');
+    }
+  }
+
+  return warnings;
+}

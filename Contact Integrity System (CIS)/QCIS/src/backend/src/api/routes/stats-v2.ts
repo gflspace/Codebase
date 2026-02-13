@@ -901,4 +901,92 @@ router.get(
   }
 );
 
+// ─── GET /api/stats/v2/leakage-funnel ────────────────────────
+
+router.get(
+  '/leakage-funnel',
+  authenticateJWT,
+  requirePermission('intelligence.view'),
+  async (req: Request, res: Response) => {
+    try {
+      const { interval } = parseFilters(req);
+
+      const [funnelResult, destResult, revenueResult, velocityResult] = await Promise.all([
+        // Funnel counts by stage
+        query(
+          `SELECT stage, COUNT(*) AS count
+           FROM leakage_events
+           WHERE created_at > NOW() - $1::interval
+           GROUP BY stage`,
+          [interval]
+        ),
+        // Top destinations
+        query(
+          `SELECT platform_destination AS platform, COUNT(*) AS count
+           FROM leakage_events
+           WHERE created_at > NOW() - $1::interval
+             AND platform_destination IS NOT NULL
+           GROUP BY platform_destination
+           ORDER BY count DESC
+           LIMIT 10`,
+          [interval]
+        ),
+        // Revenue impact
+        query(
+          `SELECT
+             COALESCE(SUM(estimated_revenue_loss), 0) AS total_loss,
+             COALESCE(AVG(estimated_revenue_loss), 0) AS avg_loss,
+             COUNT(*) FILTER (WHERE stage = 'leakage') AS confirmed_leakages
+           FROM leakage_events
+           WHERE created_at > NOW() - $1::interval`,
+          [interval]
+        ),
+        // Daily velocity (last 30 days for trend)
+        query(
+          `SELECT DATE_TRUNC('day', created_at) AS day,
+                  COUNT(*) AS count,
+                  COUNT(*) FILTER (WHERE stage = 'leakage') AS leakage_count
+           FROM leakage_events
+           WHERE created_at > NOW() - INTERVAL '30 days'
+           GROUP BY day
+           ORDER BY day ASC`
+        ),
+      ]);
+
+      // Build funnel
+      const funnel: Record<string, number> = { signal: 0, attempt: 0, confirmation: 0, leakage: 0 };
+      for (const row of funnelResult.rows) {
+        funnel[row.stage] = parseInt(row.count, 10);
+      }
+
+      // Build destinations
+      const destinations = destResult.rows.map((r: { platform: string; count: string }) => ({
+        platform: r.platform,
+        count: parseInt(r.count, 10),
+      }));
+
+      // Revenue
+      const revenue = {
+        total_loss: parseFloat(revenueResult.rows[0]?.total_loss || '0'),
+        avg_loss: parseFloat(revenueResult.rows[0]?.avg_loss || '0'),
+        confirmed_leakages: parseInt(revenueResult.rows[0]?.confirmed_leakages || '0', 10),
+      };
+
+      // Velocity
+      const velocity = velocityResult.rows.map((r: { day: string; count: string; leakage_count: string }) => ({
+        day: r.day,
+        count: parseInt(r.count, 10),
+        leakage_count: parseInt(r.leakage_count, 10),
+      }));
+
+      res.json({
+        data: { funnel, destinations, revenue, velocity },
+      });
+    } catch (error) {
+      console.error('Stats leakage-funnel error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
 export default router;

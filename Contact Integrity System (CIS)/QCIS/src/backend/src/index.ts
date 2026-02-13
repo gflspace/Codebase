@@ -2,7 +2,7 @@ import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
-import { config } from './config';
+import { config, validateConfig } from './config';
 import { testConnection, closePool } from './database/connection';
 import { errorHandler, notFound } from './api/middleware/errorHandler';
 import { registerDetectionConsumer } from './detection';
@@ -15,6 +15,8 @@ import { registerTemporalPatternConsumer } from './detection/consumers/temporal-
 import { registerContactChangeConsumer } from './detection/consumers/contact-change';
 import { registerLeakageConsumer } from './detection/consumers/leakage-tracking';
 import { registerRelationshipConsumer } from './detection/consumers/relationship-tracking';
+import { registerDeviceFingerprintConsumer } from './detection/consumers/device-fingerprint';
+import { registerContagionConsumer } from './detection/consumers/contagion';
 import { registerThresholdAlertConsumer } from './alerting/consumers/threshold';
 import { registerTrendAlertConsumer } from './alerting/consumers/trend';
 import { registerLeakageAlertConsumer } from './alerting/consumers/leakage';
@@ -138,6 +140,12 @@ async function start(): Promise<void> {
   console.log(`  Shadow Mode: ${config.shadowMode}`);
   console.log(`  Kill Switch: ${config.enforcementKillSwitch}`);
 
+  // Validate config
+  const configWarnings = validateConfig();
+  for (const w of configWarnings) {
+    console.warn(`  [Config] ${w}`);
+  }
+
   const dbOk = await testConnection();
   if (dbOk) {
     console.log('  Database: connected');
@@ -171,11 +179,13 @@ async function start(): Promise<void> {
   // Phase 3A — Intelligence layer consumers
   registerLeakageConsumer();
   registerRelationshipConsumer();
+  registerDeviceFingerprintConsumer();
+  registerContagionConsumer();
   // Phase 3C — Alerting engine consumers (Layer 8)
   registerThresholdAlertConsumer();
   registerTrendAlertConsumer();
   registerLeakageAlertConsumer();
-  console.log('  Event consumers: 13 registered (detection, scoring, enforcement + 5 Phase 2C detectors + 2 Phase 3A intelligence + 3 Phase 3C alerting)');
+  console.log('  Event consumers: 15 registered (detection, scoring, enforcement + 5 Phase 2C detectors + 4 Phase 3A intelligence + 3 Phase 3C alerting)');
 
   // Recover pending events from last crash (durable bus only)
   const bus = getEventBus();
