@@ -13,6 +13,10 @@ import SystemHealth from './modules/SystemHealth';
 import AuditLogsModule from './modules/AuditLogsModule';
 import IntelligenceDashboard from './intelligence/IntelligenceDashboard';
 import SettingsModule from './modules/SettingsModule';
+import RulesEngine from './modules/RulesEngine';
+import BookingTimeline from './modules/BookingTimeline';
+import FinancialFlow from './modules/FinancialFlow';
+import NetworkExplorer from './modules/NetworkExplorer';
 
 const MODULES = [
   { id: 'intelligence', label: 'Intelligence', permission: 'intelligence.view' },
@@ -25,6 +29,10 @@ const MODULES = [
   { id: 'appeals', label: 'Appeals', permission: 'appeals.view' },
   { id: 'health', label: 'System Health', permission: 'system_health.view' },
   { id: 'audit', label: 'Audit Logs', permission: 'audit_logs.view' },
+  { id: 'bookings', label: 'Bookings', permission: 'intelligence.view' },
+  { id: 'financial', label: 'Financial', permission: 'intelligence.view' },
+  { id: 'network', label: 'Network Explorer', permission: 'intelligence.view' },
+  { id: 'rules', label: 'Rules Engine', permission: 'rules.view' },
   { id: 'settings', label: 'Settings', permission: 'settings.view' },
 ] as const;
 
@@ -166,6 +174,10 @@ export default function Dashboard() {
         {activeModule === 'appeals' && <AppealsModule />}
         {activeModule === 'health' && <SystemHealth />}
         {activeModule === 'audit' && <AuditLogsModule />}
+        {activeModule === 'bookings' && <BookingTimeline />}
+        {activeModule === 'financial' && <FinancialFlow />}
+        {activeModule === 'network' && <NetworkExplorer />}
+        {activeModule === 'rules' && <RulesEngine />}
         {activeModule === 'settings' && <SettingsModule />}
       </main>
     </div>

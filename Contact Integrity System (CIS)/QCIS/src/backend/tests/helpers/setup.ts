@@ -125,6 +125,7 @@ const ALL_PERMISSIONS = [
   'appeals.view', 'appeals.resolve', 'audit_logs.view', 'settings.view',
   'settings.manage_admins', 'settings.manage_roles', 'intelligence.view',
   'category.view', 'system_health.view', 'messages.view',
+  'rules.view', 'rules.manage',
 ];
 
 export const mockResolvePermissions = vi.fn().mockResolvedValue(ALL_PERMISSIONS);

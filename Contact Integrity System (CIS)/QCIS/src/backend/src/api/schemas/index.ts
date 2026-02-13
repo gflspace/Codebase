@@ -149,7 +149,9 @@ export const enforcementQuerySchema = paginationQuery.extend({
   user_id: z.string().uuid().optional(),
   action_type: z.enum([
     'soft_warning', 'hard_warning', 'temporary_restriction',
-    'account_suspension', 'permanent_ban',
+    'account_suspension', 'permanent_ban', 'admin_escalation',
+    'booking_blocked', 'booking_flagged', 'payment_held', 'payment_blocked',
+    'provider_demoted', 'provider_suspended', 'message_throttled',
   ]).optional(),
   active_only: z.coerce.boolean().optional(),
   category: z.string().optional(),
@@ -181,6 +183,7 @@ export const alertQuerySchema = paginationQuery.extend({
   assigned_to: z.string().uuid().optional(),
   category: z.string().optional(),
   user_type: z.string().optional(),
+  source: z.enum(['enforcement', 'threshold', 'trend', 'leakage', 'sla']).optional(),
 });
 
 export const updateAlertSchema = z.object({
@@ -333,4 +336,78 @@ export const networkQuerySchema = z.object({
 export const deviceQuerySchema = paginationQuery.extend({
   user_id: z.string().uuid().optional(),
   device_hash: z.string().max(64).optional(),
+});
+
+// ─── Evaluate (Phase 3B) ────────────────────────────────────
+
+export const evaluateSchema = z.object({
+  action_type: z.enum(['booking.create', 'payment.initiate', 'provider.register']),
+  user_id: z.string().uuid(),
+  counterparty_id: z.string().uuid().optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+// ─── Detection Rules (Layer 9) ───────────────────────────────
+
+const ruleConditionSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([
+    z.object({
+      field: z.string(),
+      operator: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'not_in', 'contains']),
+      value: z.union([z.string(), z.number(), z.boolean(), z.array(z.union([z.string(), z.number()]))]),
+    }),
+    z.object({ all: z.array(ruleConditionSchema) }),
+    z.object({ any: z.array(ruleConditionSchema) }),
+  ])
+);
+
+export const createRuleSchema = z.object({
+  name: z.string().max(255),
+  description: z.string().max(2000).optional(),
+  rule_type: z.enum(['enforcement_trigger', 'alert_threshold', 'scoring_adjustment', 'detection']),
+  trigger_event_types: z.array(z.string()).min(1),
+  conditions: ruleConditionSchema,
+  actions: z.array(z.object({
+    type: z.enum(['create_enforcement', 'create_alert', 'adjust_score', 'create_signal']),
+    action_type: z.string().optional(),
+    priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+    delta: z.number().optional(),
+    signal_type: z.string().optional(),
+  })).min(1),
+  priority: z.number().int().min(0).max(1000).default(100),
+  enabled: z.boolean().default(true),
+  dry_run: z.boolean().default(false),
+});
+
+export const updateRuleSchema = createRuleSchema.partial();
+
+export const ruleQuerySchema = paginationQuery.extend({
+  rule_type: z.enum(['enforcement_trigger', 'alert_threshold', 'scoring_adjustment', 'detection']).optional(),
+  enabled: z.coerce.boolean().optional(),
+});
+
+// ─── Alert Subscriptions (Layer 8) ───────────────────────────
+
+export const createSubscriptionSchema = z.object({
+  name: z.string().max(255),
+  filter_criteria: z.object({
+    priority: z.array(z.enum(['low', 'medium', 'high', 'critical'])).optional(),
+    source: z.array(z.enum(['enforcement', 'threshold', 'trend', 'leakage', 'sla'])).optional(),
+    category: z.array(z.string()).optional(),
+    user_type: z.array(z.string()).optional(),
+  }).default({}),
+  channels: z.array(z.enum(['dashboard', 'email', 'slack'])).default(['dashboard']),
+  enabled: z.boolean().default(true),
+});
+
+export const updateSubscriptionSchema = z.object({
+  name: z.string().max(255).optional(),
+  filter_criteria: z.object({
+    priority: z.array(z.enum(['low', 'medium', 'high', 'critical'])).optional(),
+    source: z.array(z.enum(['enforcement', 'threshold', 'trend', 'leakage', 'sla'])).optional(),
+    category: z.array(z.string()).optional(),
+    user_type: z.array(z.string()).optional(),
+  }).optional(),
+  channels: z.array(z.enum(['dashboard', 'email', 'slack'])).optional(),
+  enabled: z.boolean().optional(),
 });

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import * as api from '@/lib/api';
+import EvaluationStats from './EvaluationStats';
 
 interface EnforcementAction {
   id: string;
@@ -28,6 +29,14 @@ const ACTION_COLORS: Record<string, string> = {
   temporary_restriction: 'bg-cis-red-soft text-cis-red',
   account_suspension: 'bg-red-100 text-red-800',
   permanent_ban: 'bg-red-900 text-white',
+  // Phase 3B — Context-aware action types
+  booking_blocked: 'bg-red-100 text-red-700',
+  booking_flagged: 'bg-amber-100 text-amber-700',
+  payment_held: 'bg-orange-100 text-orange-700',
+  payment_blocked: 'bg-red-200 text-red-800',
+  provider_demoted: 'bg-amber-100 text-amber-800',
+  provider_suspended: 'bg-red-100 text-red-800',
+  message_throttled: 'bg-blue-100 text-blue-700',
 };
 
 const SERVICE_CATEGORIES = ['', 'Cleaning', 'Plumbing', 'Electrical', 'Moving', 'Tutoring', 'Handyman', 'Landscaping', 'Pet Care', 'Auto Repair', 'Personal Training'];
@@ -85,6 +94,13 @@ export default function EnforcementManagement() {
           <option value="temporary_restriction">Temporary Restriction</option>
           <option value="account_suspension">Account Suspension</option>
           <option value="permanent_ban">Permanent Ban</option>
+          <option value="booking_blocked">Booking Blocked</option>
+          <option value="booking_flagged">Booking Flagged</option>
+          <option value="payment_held">Payment Held</option>
+          <option value="payment_blocked">Payment Blocked</option>
+          <option value="provider_demoted">Provider Demoted</option>
+          <option value="provider_suspended">Provider Suspended</option>
+          <option value="message_throttled">Message Throttled</option>
         </select>
         <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="text-xs border border-gray-300 rounded-md px-2 py-1">
           <option value="">All categories</option>
@@ -202,6 +218,9 @@ export default function EnforcementManagement() {
           </div>
         )}
       </div>
+
+      {/* Pre-Transaction Evaluation Stats */}
+      <EvaluationStats />
 
       {/* Reverse confirmation modal */}
       {reverseModal && (

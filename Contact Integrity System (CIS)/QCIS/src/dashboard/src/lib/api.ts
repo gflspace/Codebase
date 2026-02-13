@@ -338,3 +338,240 @@ export interface NetworkData {
 
 export const getUserNetwork = (token: string, userId: string, depth: number = 1) =>
   request<{ data: NetworkData }>(`/intelligence/network/${userId}?depth=${depth}`, { token });
+
+// ─── Evaluation Stats (Phase 3B) ────────────────────────────────
+
+export interface EvaluationStatsData {
+  decision_time_series: Array<{ timestamp: string; allow: number; flag: number; block: number }>;
+  by_action_type: Record<string, { allow: number; flag: number; block: number }>;
+  latency: { p50: number; p95: number; p99: number; max: number; total: number };
+}
+
+export const getEvaluationStats = (token: string, params: Record<string, string>) => {
+  const qs = '?' + new URLSearchParams(params).toString();
+  return request<{ data: EvaluationStatsData }>(`/stats/v2/evaluation-stats${qs}`, { token });
+};
+
+// ─── Alert Subscriptions (Layer 8) ──────────────────────────────
+
+export interface AlertSubscriptionData {
+  id: string;
+  admin_user_id: string;
+  name: string;
+  filter_criteria: {
+    priority?: string[];
+    source?: string[];
+    category?: string[];
+    user_type?: string[];
+  };
+  channels: string[];
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export const getAlertSubscriptions = (token: string) =>
+  request<{ data: AlertSubscriptionData[] }>('/alert-subscriptions', { token });
+
+export const createAlertSubscription = (token: string, data: {
+  name: string;
+  filter_criteria: Record<string, unknown>;
+  channels?: string[];
+  enabled?: boolean;
+}) =>
+  request<{ data: AlertSubscriptionData }>('/alert-subscriptions', { method: 'POST', body: data, token });
+
+export const updateAlertSubscription = (token: string, id: string, data: {
+  name?: string;
+  filter_criteria?: Record<string, unknown>;
+  channels?: string[];
+  enabled?: boolean;
+}) =>
+  request<{ data: AlertSubscriptionData }>(`/alert-subscriptions/${id}`, { method: 'PATCH', body: data, token });
+
+export const deleteAlertSubscription = (token: string, id: string) =>
+  request<{ data: { deleted: boolean; id: string } }>(`/alert-subscriptions/${id}`, { method: 'DELETE', token });
+
+// ─── Detection Rules (Layer 9) ──────────────────────────────────
+
+export interface DetectionRule {
+  id: string;
+  name: string;
+  description: string | null;
+  rule_type: string;
+  trigger_event_types: string[];
+  conditions: unknown;
+  actions: unknown[];
+  priority: number;
+  enabled: boolean;
+  dry_run: boolean;
+  created_by: string;
+  version: number;
+  previous_version_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RuleMatchLog {
+  id: string;
+  rule_id: string;
+  user_id: string;
+  event_type: string;
+  matched: boolean;
+  dry_run: boolean;
+  context_snapshot: unknown;
+  actions_executed: unknown;
+  created_at: string;
+}
+
+export interface RuleTestResult {
+  matches: number;
+  total: number;
+  sample_matches: Array<{ user_id: string; score: number; tier: string }>;
+}
+
+export const getAdminRules = (token: string, params?: Record<string, string>) => {
+  const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+  return request<{ data: DetectionRule[]; pagination: unknown }>(`/admin/rules${qs}`, { token });
+};
+
+export const getAdminRule = (token: string, id: string) =>
+  request<{ data: DetectionRule }>(`/admin/rules/${id}`, { token });
+
+export const createAdminRule = (token: string, data: {
+  name: string;
+  description?: string;
+  rule_type: string;
+  trigger_event_types: string[];
+  conditions: unknown;
+  actions: unknown[];
+  priority?: number;
+  enabled?: boolean;
+  dry_run?: boolean;
+}) =>
+  request<{ data: DetectionRule }>('/admin/rules', { method: 'POST', body: data, token });
+
+export const updateAdminRule = (token: string, id: string, data: {
+  name?: string;
+  description?: string;
+  rule_type?: string;
+  trigger_event_types?: string[];
+  conditions?: unknown;
+  actions?: unknown[];
+  priority?: number;
+  enabled?: boolean;
+  dry_run?: boolean;
+}) =>
+  request<{ data: DetectionRule }>(`/admin/rules/${id}`, { method: 'PUT', body: data, token });
+
+export const deleteAdminRule = (token: string, id: string) =>
+  request<{ data: { deleted: boolean; id: string } }>(`/admin/rules/${id}`, { method: 'DELETE', token });
+
+export const testAdminRule = (token: string, id: string) =>
+  request<{ data: RuleTestResult }>(`/admin/rules/${id}/test`, { method: 'POST', token });
+
+export const getAdminRuleHistory = (token: string, id: string) =>
+  request<{ data: DetectionRule[] }>(`/admin/rules/${id}/history`, { token });
+
+export const getAdminRuleMatches = (token: string, id: string) =>
+  request<{ data: RuleMatchLog[] }>(`/admin/rules/${id}/matches`, { token });
+
+// ─── Booking Timeline ───────────────────────────────────────────
+
+export interface BookingKPI {
+  total_bookings: { value: number; previous: number; status: 'green' | 'amber' | 'red' };
+  completed: { value: number; previous: number; status: 'green' | 'amber' | 'red' };
+  cancelled: { value: number; previous: number; status: 'green' | 'amber' | 'red' };
+  no_shows: { value: number; previous: number; status: 'green' | 'amber' | 'red' };
+  completion_rate: number;
+  avg_booking_value: { value: number; previous: number };
+}
+
+export interface BookingTimelinePoint {
+  timestamp: string;
+  total: number;
+  completed: number;
+  cancelled: number;
+  no_show: number;
+  pending: number;
+}
+
+export interface BookingCategoryBreakdown {
+  category: string;
+  total: number;
+  completed: number;
+  cancelled: number;
+  no_show: number;
+}
+
+export interface BookingTimelineData {
+  kpi: BookingKPI;
+  timeline: BookingTimelinePoint[];
+  by_category: BookingCategoryBreakdown[];
+}
+
+export const getBookingTimeline = (token: string, params: Record<string, string>) => {
+  const qs = '?' + new URLSearchParams(params).toString();
+  return request<{ data: BookingTimelineData }>(`/stats/v2/booking-timeline${qs}`, { token });
+};
+
+// ─── Financial Flow ─────────────────────────────────────────────
+
+export interface WalletTimelinePoint {
+  timestamp: string;
+  deposits: number;
+  withdrawals: number;
+  transfers: number;
+  deposit_volume: number;
+  withdrawal_volume: number;
+  transfer_volume: number;
+}
+
+export interface TxTimelinePoint {
+  timestamp: string;
+  total: number;
+  completed: number;
+  failed: number;
+  pending: number;
+}
+
+export interface FinancialFlowKPI {
+  total_volume: number;
+  avg_transaction: number;
+  completed_volume: number;
+  failed_volume: number;
+  total_transactions: number;
+  deposits: { value: number; previous: number; status: 'green' | 'amber' | 'red' };
+  withdrawals: { value: number; previous: number; status: 'green' | 'amber' | 'red' };
+  tx_completed: { value: number; previous: number; status: 'green' | 'amber' | 'red' };
+  tx_failed: { value: number; previous: number; status: 'green' | 'amber' | 'red' };
+}
+
+export interface FinancialFlowData {
+  kpi: FinancialFlowKPI;
+  wallet_timeline: WalletTimelinePoint[];
+  transaction_timeline: TxTimelinePoint[];
+}
+
+export const getFinancialFlow = (token: string, params: Record<string, string>) => {
+  const qs = '?' + new URLSearchParams(params).toString();
+  return request<{ data: FinancialFlowData }>(`/stats/v2/financial-flow${qs}`, { token });
+};
+
+// ─── Alert Stats (Layer 8) ──────────────────────────────────────
+
+export interface AlertStatsData {
+  by_source: Record<string, number>;
+  by_priority: Record<string, number>;
+  open_count: number;
+  resolved_count: number;
+  total: number;
+  avg_resolution_hours: number;
+  sla_breach_count: number;
+  sla_breach_rate: number;
+}
+
+export const getAlertStats = (token: string, params: Record<string, string>) => {
+  const qs = '?' + new URLSearchParams(params).toString();
+  return request<{ data: AlertStatsData }>(`/stats/v2/alert-stats${qs}`, { token });
+};

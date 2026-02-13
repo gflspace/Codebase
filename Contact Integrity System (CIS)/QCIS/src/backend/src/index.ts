@@ -15,6 +15,10 @@ import { registerTemporalPatternConsumer } from './detection/consumers/temporal-
 import { registerContactChangeConsumer } from './detection/consumers/contact-change';
 import { registerLeakageConsumer } from './detection/consumers/leakage-tracking';
 import { registerRelationshipConsumer } from './detection/consumers/relationship-tracking';
+import { registerThresholdAlertConsumer } from './alerting/consumers/threshold';
+import { registerTrendAlertConsumer } from './alerting/consumers/trend';
+import { registerLeakageAlertConsumer } from './alerting/consumers/leakage';
+import { startSlaEscalation, stopSlaEscalation } from './alerting/sla-escalation';
 import { globalLimiter, aiLimiter, writeLimiter } from './api/middleware/rateLimit';
 import { closeRedis, testRedisConnection } from './events/redis';
 import { getEventBus } from './events/bus';
@@ -44,6 +48,10 @@ import adminRoleRoutes from './api/routes/admin-roles';
 import webhookRoutes from './api/routes/webhooks';
 import ratingRoutes from './api/routes/ratings';
 import intelligenceRoutes from './api/routes/intelligence';
+import evaluateRoutes from './api/routes/evaluate';
+import alertSubscriptionRoutes from './api/routes/alert-subscriptions';
+import adminRulesRoutes from './api/routes/admin-rules';
+import streamRoutes from './api/routes/stream';
 
 const app = express();
 
@@ -69,6 +77,9 @@ app.use('/api/enforcement-actions', writeLimiter);
 app.use('/api/admin', writeLimiter);
 app.use('/api/webhooks', writeLimiter);
 app.use('/api/ratings', writeLimiter);
+app.use('/api/evaluate', writeLimiter);
+app.use('/api/alert-subscriptions', writeLimiter);
+app.use('/api/admin/rules', writeLimiter);
 
 // Root route
 app.get('/', (_req, res) => {
@@ -107,6 +118,10 @@ app.use('/api/admin/roles', adminRoleRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/intelligence', intelligenceRoutes);
+app.use('/api/evaluate', evaluateRoutes);
+app.use('/api/alert-subscriptions', alertSubscriptionRoutes);
+app.use('/api/admin/rules', adminRulesRoutes);
+app.use('/api/stream', streamRoutes);
 
 // Error handling
 app.use(notFound);
@@ -156,7 +171,11 @@ async function start(): Promise<void> {
   // Phase 3A — Intelligence layer consumers
   registerLeakageConsumer();
   registerRelationshipConsumer();
-  console.log('  Event consumers: 10 registered (detection, scoring, enforcement + 5 Phase 2C detectors + 2 Phase 3A intelligence)');
+  // Phase 3C — Alerting engine consumers (Layer 8)
+  registerThresholdAlertConsumer();
+  registerTrendAlertConsumer();
+  registerLeakageAlertConsumer();
+  console.log('  Event consumers: 13 registered (detection, scoring, enforcement + 5 Phase 2C detectors + 2 Phase 3A intelligence + 3 Phase 3C alerting)');
 
   // Recover pending events from last crash (durable bus only)
   const bus = getEventBus();
@@ -171,6 +190,9 @@ async function start(): Promise<void> {
     console.log(`  API listening on port ${config.port}`);
     console.log(`  Health check: http://localhost:${config.port}/api/health`);
   });
+
+  // Start SLA escalation service (Layer 8)
+  startSlaEscalation();
 
   // Keep connections alive but let shutdown close them
   server.keepAliveTimeout = 65_000;
@@ -204,7 +226,10 @@ async function shutdown(signal: string): Promise<void> {
     });
   }
 
-  // 2. Close Redis connection (if durable bus is active)
+  // 2. Stop SLA escalation service
+  stopSlaEscalation();
+
+  // 3. Close Redis connection (if durable bus is active)
   try {
     await closeRedis();
     console.log(`[Shutdown] Redis closed (${Date.now() - shutdownStart}ms)`);
@@ -212,7 +237,7 @@ async function shutdown(signal: string): Promise<void> {
     // Redis may not be configured — non-critical
   }
 
-  // 3. Close database pool (drains active queries)
+  // 4. Close database pool (drains active queries)
   try {
     await closePool();
     console.log(`[Shutdown] Database pool closed (${Date.now() - shutdownStart}ms)`);

@@ -502,4 +502,403 @@ router.get(
   }
 );
 
+// ─── GET /api/stats/v2/evaluation-stats ──────────────────────
+
+router.get(
+  '/evaluation-stats',
+  authenticateJWT,
+  requirePermission('intelligence.view'),
+  async (req: Request, res: Response) => {
+    try {
+      const filters = parseFilters(req);
+      const { interval, bucket } = filters;
+
+      const [decisionRows, actionTypeRows, latencyRows] = await Promise.all([
+        // Decision distribution over time
+        query(
+          `SELECT DATE_TRUNC('${bucket}', created_at) AS ts,
+                  decision,
+                  COUNT(*) AS cnt
+           FROM evaluation_log
+           WHERE created_at > NOW() - INTERVAL '${interval}'
+           GROUP BY ts, decision
+           ORDER BY ts`
+        ),
+        // Breakdown by action_type
+        query(
+          `SELECT action_type, decision, COUNT(*) AS cnt
+           FROM evaluation_log
+           WHERE created_at > NOW() - INTERVAL '${interval}'
+           GROUP BY action_type, decision`
+        ),
+        // Latency percentiles
+        query(
+          `SELECT
+             PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY evaluation_time_ms) AS p50,
+             PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY evaluation_time_ms) AS p95,
+             PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY evaluation_time_ms) AS p99,
+             MAX(evaluation_time_ms) AS max_ms,
+             COUNT(*) AS total
+           FROM evaluation_log
+           WHERE created_at > NOW() - INTERVAL '${interval}'`
+        ),
+      ]);
+
+      // Build decision time series
+      const decisionTimeSeries: Array<{ timestamp: string; allow: number; flag: number; block: number }> = [];
+      const tsMap = new Map<string, { allow: number; flag: number; block: number }>();
+      for (const row of decisionRows.rows) {
+        const ts = row.ts instanceof Date ? row.ts.toISOString() : String(row.ts);
+        if (!tsMap.has(ts)) tsMap.set(ts, { allow: 0, flag: 0, block: 0 });
+        const entry = tsMap.get(ts)!;
+        const d = row.decision as 'allow' | 'flag' | 'block';
+        if (d in entry) entry[d] = parseInt(row.cnt, 10);
+      }
+      for (const [ts, counts] of [...tsMap.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+        decisionTimeSeries.push({ timestamp: ts, ...counts });
+      }
+
+      // Build action type breakdown
+      const byActionType: Record<string, { allow: number; flag: number; block: number }> = {};
+      for (const row of actionTypeRows.rows) {
+        const at = row.action_type as string;
+        if (!byActionType[at]) byActionType[at] = { allow: 0, flag: 0, block: 0 };
+        const d = row.decision as 'allow' | 'flag' | 'block';
+        if (d in byActionType[at]) byActionType[at][d] = parseInt(row.cnt, 10);
+      }
+
+      // Latency
+      const latRow = latencyRows.rows[0] || {};
+      const latency = {
+        p50: Math.round(parseFloat(latRow.p50) || 0),
+        p95: Math.round(parseFloat(latRow.p95) || 0),
+        p99: Math.round(parseFloat(latRow.p99) || 0),
+        max: parseInt(latRow.max_ms) || 0,
+        total: parseInt(latRow.total) || 0,
+      };
+
+      res.json({
+        data: {
+          decision_time_series: decisionTimeSeries,
+          by_action_type: byActionType,
+          latency,
+        },
+      });
+    } catch (error) {
+      console.error('Stats v2 evaluation-stats error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// ─── GET /api/stats/v2/alert-stats ───────────────────────────
+
+router.get(
+  '/alert-stats',
+  authenticateJWT,
+  requirePermission('alerts.view'),
+  async (req: Request, res: Response) => {
+    try {
+      const filters = parseFilters(req);
+      const { interval } = filters;
+
+      const [bySource, byPriority, statusCounts, avgResolution, slaBreach] = await Promise.all([
+        // Count by source
+        query(
+          `SELECT COALESCE(source, 'enforcement') AS source, COUNT(*) AS cnt
+           FROM alerts
+           WHERE created_at > NOW() - INTERVAL '${interval}'
+           GROUP BY source`
+        ),
+        // Count by priority
+        query(
+          `SELECT priority, COUNT(*) AS cnt
+           FROM alerts
+           WHERE created_at > NOW() - INTERVAL '${interval}'
+           GROUP BY priority`
+        ),
+        // Open vs resolved counts
+        query(
+          `SELECT
+             COUNT(*) FILTER (WHERE status IN ('open', 'assigned', 'in_progress')) AS open_count,
+             COUNT(*) FILTER (WHERE status IN ('resolved', 'dismissed')) AS resolved_count,
+             COUNT(*) AS total
+           FROM alerts
+           WHERE created_at > NOW() - INTERVAL '${interval}'`
+        ),
+        // Average time to resolution (for resolved alerts)
+        query(
+          `SELECT AVG(EXTRACT(EPOCH FROM (COALESCE(resolved_at, updated_at) - created_at))) AS avg_seconds
+           FROM alerts
+           WHERE status IN ('resolved', 'dismissed')
+             AND created_at > NOW() - INTERVAL '${interval}'`
+        ),
+        // SLA breach count and rate
+        query(
+          `SELECT
+             COUNT(*) FILTER (WHERE escalation_count > 0) AS breached,
+             COUNT(*) AS total
+           FROM alerts
+           WHERE created_at > NOW() - INTERVAL '${interval}'
+             AND sla_deadline IS NOT NULL`
+        ),
+      ]);
+
+      // Build source breakdown
+      const sourceBreakdown: Record<string, number> = {};
+      for (const row of bySource.rows) {
+        sourceBreakdown[row.source] = parseInt(row.cnt, 10);
+      }
+
+      // Build priority breakdown
+      const priorityBreakdown: Record<string, number> = {};
+      for (const row of byPriority.rows) {
+        priorityBreakdown[row.priority] = parseInt(row.cnt, 10);
+      }
+
+      const statusRow = statusCounts.rows[0] || {};
+      const openCount = parseInt(statusRow.open_count || '0', 10);
+      const resolvedCount = parseInt(statusRow.resolved_count || '0', 10);
+      const total = parseInt(statusRow.total || '0', 10);
+
+      const avgSeconds = parseFloat(avgResolution.rows[0]?.avg_seconds || '0');
+      const avgResolutionHours = Math.round((avgSeconds / 3600) * 10) / 10;
+
+      const slaRow = slaBreach.rows[0] || {};
+      const slaBreached = parseInt(slaRow.breached || '0', 10);
+      const slaTotal = parseInt(slaRow.total || '0', 10);
+      const slaBreachRate = slaTotal > 0 ? Math.round((slaBreached / slaTotal) * 1000) / 10 : 0;
+
+      res.json({
+        data: {
+          by_source: sourceBreakdown,
+          by_priority: priorityBreakdown,
+          open_count: openCount,
+          resolved_count: resolvedCount,
+          total,
+          avg_resolution_hours: avgResolutionHours,
+          sla_breach_count: slaBreached,
+          sla_breach_rate: slaBreachRate,
+        },
+      });
+    } catch (error) {
+      console.error('Stats v2 alert-stats error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// ─── GET /api/stats/v2/booking-timeline ──────────────────────
+
+router.get(
+  '/booking-timeline',
+  authenticateJWT,
+  requirePermission('intelligence.view'),
+  async (req: Request, res: Response) => {
+    try {
+      const filters = parseFilters(req);
+      const { interval, doubleInterval, bucket } = filters;
+
+      const [statusRows, categoryRows, valueRows] = await Promise.all([
+        // Bookings by status over time
+        query(
+          `SELECT DATE_TRUNC('${bucket}', b.created_at) AS ts,
+                  COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE b.status = 'completed') AS completed,
+                  COUNT(*) FILTER (WHERE b.status = 'cancelled') AS cancelled,
+                  COUNT(*) FILTER (WHERE b.status = 'no_show') AS no_show,
+                  COUNT(*) FILTER (WHERE b.status IN ('created', 'updated')) AS pending
+           FROM bookings b
+           WHERE b.created_at > NOW() - INTERVAL '${doubleInterval}'
+           GROUP BY ts ORDER BY ts`
+        ),
+        // Bookings by service category
+        query(
+          `SELECT COALESCE(b.service_category, 'uncategorized') AS category,
+                  COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE b.status = 'completed') AS completed,
+                  COUNT(*) FILTER (WHERE b.status = 'cancelled') AS cancelled,
+                  COUNT(*) FILTER (WHERE b.status = 'no_show') AS no_show
+           FROM bookings b
+           WHERE b.created_at > NOW() - INTERVAL '${interval}'
+           GROUP BY category
+           ORDER BY total DESC`
+        ),
+        // Average booking value
+        query(
+          `SELECT DATE_TRUNC('${bucket}', b.created_at) AS ts,
+                  AVG(b.amount) AS avg_value,
+                  SUM(b.amount) AS total_value,
+                  COUNT(*) AS booking_count
+           FROM bookings b
+           WHERE b.created_at > NOW() - INTERVAL '${doubleInterval}'
+             AND b.amount IS NOT NULL
+           GROUP BY ts ORDER BY ts`
+        ),
+      ]);
+
+      // Build time series
+      const totalBookings = splitPeriods(statusRows.rows, interval, 'total');
+      const completedBookings = splitPeriods(statusRows.rows, interval, 'completed');
+      const cancelledBookings = splitPeriods(statusRows.rows, interval, 'cancelled');
+      const noShows = splitPeriods(statusRows.rows, interval, 'no_show');
+      const avgValue = splitPeriodsAvg(valueRows.rows, interval, 'avg_value');
+
+      // Build timeline
+      const timeline: Array<{ timestamp: string; total: number; completed: number; cancelled: number; no_show: number; pending: number }> = [];
+      for (const row of statusRows.rows) {
+        const ts = row.ts instanceof Date ? row.ts.toISOString() : String(row.ts);
+        timeline.push({
+          timestamp: ts,
+          total: parseInt(row.total) || 0,
+          completed: parseInt(row.completed) || 0,
+          cancelled: parseInt(row.cancelled) || 0,
+          no_show: parseInt(row.no_show) || 0,
+          pending: parseInt(row.pending) || 0,
+        });
+      }
+
+      // Completion rate
+      const completionRate = totalBookings.current > 0
+        ? Math.round((completedBookings.current / totalBookings.current) * 1000) / 10
+        : 0;
+
+      res.json({
+        data: {
+          kpi: {
+            total_bookings: { value: totalBookings.current, previous: totalBookings.previous, status: computeStatus(totalBookings.current, totalBookings.previous, false) },
+            completed: { value: completedBookings.current, previous: completedBookings.previous, status: computeStatus(completedBookings.current, completedBookings.previous, false) },
+            cancelled: { value: cancelledBookings.current, previous: cancelledBookings.previous, status: computeStatus(cancelledBookings.current, cancelledBookings.previous, true) },
+            no_shows: { value: noShows.current, previous: noShows.previous, status: computeStatus(noShows.current, noShows.previous, true) },
+            completion_rate: completionRate,
+            avg_booking_value: { value: avgValue.current, previous: avgValue.previous },
+          },
+          timeline,
+          by_category: categoryRows.rows.map((r) => ({
+            category: r.category,
+            total: parseInt(r.total) || 0,
+            completed: parseInt(r.completed) || 0,
+            cancelled: parseInt(r.cancelled) || 0,
+            no_show: parseInt(r.no_show) || 0,
+          })),
+        },
+      });
+    } catch (error) {
+      console.error('Stats v2 booking-timeline error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// ─── GET /api/stats/v2/financial-flow ────────────────────────
+
+router.get(
+  '/financial-flow',
+  authenticateJWT,
+  requirePermission('intelligence.view'),
+  async (req: Request, res: Response) => {
+    try {
+      const filters = parseFilters(req);
+      const { interval, doubleInterval, bucket } = filters;
+
+      const [walletRows, txStatusRows, txValueRows] = await Promise.all([
+        // Wallet activity by type over time
+        query(
+          `SELECT DATE_TRUNC('${bucket}', t.created_at) AS ts,
+                  COUNT(*) FILTER (WHERE t.tx_type = 'deposit') AS deposits,
+                  COUNT(*) FILTER (WHERE t.tx_type = 'withdrawal') AS withdrawals,
+                  COUNT(*) FILTER (WHERE t.tx_type = 'transfer') AS transfers,
+                  SUM(t.amount) FILTER (WHERE t.tx_type = 'deposit') AS deposit_volume,
+                  SUM(t.amount) FILTER (WHERE t.tx_type = 'withdrawal') AS withdrawal_volume,
+                  SUM(t.amount) FILTER (WHERE t.tx_type = 'transfer') AS transfer_volume
+           FROM wallet_transactions t
+           WHERE t.created_at > NOW() - INTERVAL '${doubleInterval}'
+           GROUP BY ts ORDER BY ts`
+        ),
+        // Transaction success/fail over time
+        query(
+          `SELECT DATE_TRUNC('${bucket}', t.created_at) AS ts,
+                  COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE t.status = 'completed') AS completed,
+                  COUNT(*) FILTER (WHERE t.status = 'failed') AS failed,
+                  COUNT(*) FILTER (WHERE t.status = 'initiated') AS pending
+           FROM transactions t
+           WHERE t.created_at > NOW() - INTERVAL '${doubleInterval}'
+           GROUP BY ts ORDER BY ts`
+        ),
+        // Transaction value stats
+        query(
+          `SELECT
+             AVG(amount) AS avg_amount,
+             SUM(amount) AS total_volume,
+             COUNT(*) AS total_count,
+             SUM(amount) FILTER (WHERE status = 'completed') AS completed_volume,
+             SUM(amount) FILTER (WHERE status = 'failed') AS failed_volume
+           FROM transactions
+           WHERE created_at > NOW() - INTERVAL '${interval}'`
+        ),
+      ]);
+
+      // Wallet timeline
+      const walletTimeline: Array<{
+        timestamp: string; deposits: number; withdrawals: number; transfers: number;
+        deposit_volume: number; withdrawal_volume: number; transfer_volume: number;
+      }> = [];
+      for (const row of walletRows.rows) {
+        const ts = row.ts instanceof Date ? row.ts.toISOString() : String(row.ts);
+        walletTimeline.push({
+          timestamp: ts,
+          deposits: parseInt(row.deposits) || 0,
+          withdrawals: parseInt(row.withdrawals) || 0,
+          transfers: parseInt(row.transfers) || 0,
+          deposit_volume: parseFloat(row.deposit_volume) || 0,
+          withdrawal_volume: parseFloat(row.withdrawal_volume) || 0,
+          transfer_volume: parseFloat(row.transfer_volume) || 0,
+        });
+      }
+
+      // Transaction timeline
+      const txTimeline: Array<{ timestamp: string; total: number; completed: number; failed: number; pending: number }> = [];
+      for (const row of txStatusRows.rows) {
+        const ts = row.ts instanceof Date ? row.ts.toISOString() : String(row.ts);
+        txTimeline.push({
+          timestamp: ts,
+          total: parseInt(row.total) || 0,
+          completed: parseInt(row.completed) || 0,
+          failed: parseInt(row.failed) || 0,
+          pending: parseInt(row.pending) || 0,
+        });
+      }
+
+      // KPIs from tx values
+      const txVal = txValueRows.rows[0] || {};
+      const totalDeposits = splitPeriods(walletRows.rows, interval, 'deposits');
+      const totalWithdrawals = splitPeriods(walletRows.rows, interval, 'withdrawals');
+      const txCompleted = splitPeriods(txStatusRows.rows, interval, 'completed');
+      const txFailed = splitPeriods(txStatusRows.rows, interval, 'failed');
+
+      res.json({
+        data: {
+          kpi: {
+            total_volume: parseFloat(txVal.total_volume) || 0,
+            avg_transaction: Math.round((parseFloat(txVal.avg_amount) || 0) * 100) / 100,
+            completed_volume: parseFloat(txVal.completed_volume) || 0,
+            failed_volume: parseFloat(txVal.failed_volume) || 0,
+            total_transactions: parseInt(txVal.total_count) || 0,
+            deposits: { value: totalDeposits.current, previous: totalDeposits.previous, status: computeStatus(totalDeposits.current, totalDeposits.previous, false) },
+            withdrawals: { value: totalWithdrawals.current, previous: totalWithdrawals.previous, status: computeStatus(totalWithdrawals.current, totalWithdrawals.previous, false) },
+            tx_completed: { value: txCompleted.current, previous: txCompleted.previous, status: computeStatus(txCompleted.current, txCompleted.previous, false) },
+            tx_failed: { value: txFailed.current, previous: txFailed.previous, status: computeStatus(txFailed.current, txFailed.previous, true) },
+          },
+          wallet_timeline: walletTimeline,
+          transaction_timeline: txTimeline,
+        },
+      });
+    } catch (error) {
+      console.error('Stats v2 financial-flow error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
 export default router;

@@ -37,10 +37,8 @@ export async function executeAction(
 
   const isShadowMode = config.shadowMode;
 
-  // Map action type for database
-  const dbActionType = evaluation.action === ActionType.ADMIN_ESCALATION
-    ? 'hard_warning'
-    : evaluation.action;
+  // Map action type for database (admin_escalation now has its own enum value)
+  const dbActionType = evaluation.action;
 
   const actionId = generateId();
   const effectiveUntil = evaluation.effectiveDurationHours
@@ -117,6 +115,11 @@ export async function executeAction(
     } else if (evaluation.action === ActionType.ACCOUNT_SUSPENSION) {
       await query(
         "UPDATE users SET status = 'suspended' WHERE id = $1",
+        [userId]
+      );
+    } else if (evaluation.action === ActionType.PROVIDER_SUSPENDED) {
+      await query(
+        "UPDATE users SET status = 'restricted' WHERE id = $1",
         [userId]
       );
     }

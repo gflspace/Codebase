@@ -3,6 +3,7 @@
 
 import { query } from '../database/connection';
 import { generateId } from '../shared/utils';
+import { createAlert } from '../alerting';
 import { AppliedAction } from './actions';
 
 // ─── Reason Code to User-Facing Message Map ──────────────────
@@ -39,6 +40,35 @@ const USER_MESSAGES: Record<string, { title: string; body: string }> = {
   CRITICAL_RISK_SUSPEND: {
     title: 'Account Suspended',
     body: 'Your account has been suspended due to serious policy violations. An administrator will review your case.',
+  },
+  // Phase 3B — Context-aware action messages
+  BOOKING_BLOCKED: {
+    title: 'Booking Blocked',
+    body: 'Your booking request has been blocked due to elevated risk on your account. Please contact support.',
+  },
+  BOOKING_FLAGGED: {
+    title: 'Booking Under Review',
+    body: 'Your booking has been flagged for manual review. You will be notified once it is approved.',
+  },
+  PAYMENT_HELD: {
+    title: 'Payment Held for Review',
+    body: 'Your payment is being held for additional verification. This is a standard security measure.',
+  },
+  PAYMENT_BLOCKED: {
+    title: 'Payment Blocked',
+    body: 'Your payment has been blocked due to elevated risk. Please contact support for assistance.',
+  },
+  PROVIDER_DEMOTED: {
+    title: 'Provider Status Downgraded',
+    body: 'Your provider status has been downgraded due to detected policy concerns. Please review our guidelines.',
+  },
+  PROVIDER_SUSPENDED: {
+    title: 'Provider Account Suspended',
+    body: 'Your provider account has been suspended pending review. An administrator will review your case.',
+  },
+  MESSAGE_THROTTLED: {
+    title: 'Messaging Rate Limited',
+    body: 'Your messaging rate has been temporarily limited due to detected activity patterns.',
   },
 };
 
@@ -82,14 +112,17 @@ export async function notifyUser(action: AppliedAction): Promise<void> {
 
 /**
  * Generate an admin alert for enforcement actions that require human review.
+ * Uses centralized createAlert() for SLA deadlines and subscription matching.
  */
 export async function createAdminAlert(action: AppliedAction): Promise<string | null> {
-  const alertId = generateId();
-
   // Determine priority from action type
   let priority: string;
-  if (action.action_type === 'account_suspension') {
+  if (['account_suspension', 'payment_blocked', 'provider_suspended'].includes(action.action_type)) {
     priority = 'critical';
+  } else if (['booking_blocked', 'payment_held'].includes(action.action_type)) {
+    priority = 'high';
+  } else if (['booking_flagged', 'provider_demoted', 'message_throttled'].includes(action.action_type)) {
+    priority = 'medium';
   } else if (action.reason_code.startsWith('HIGH_RISK')) {
     priority = 'high';
   } else if (action.reason_code.startsWith('MEDIUM_RISK')) {
@@ -98,25 +131,25 @@ export async function createAdminAlert(action: AppliedAction): Promise<string | 
     priority = 'low';
   }
 
-  try {
-    await query(
-      `INSERT INTO alerts (id, user_id, priority, status, title, description, risk_signal_ids, auto_generated)
-       VALUES ($1, $2, $3, 'open', $4, $5, '{}', true)`,
-      [
-        alertId,
-        action.user_id,
-        priority,
-        `Enforcement: ${action.reason_code}`,
-        `Automated enforcement action (${action.action_type}) applied. Reason: ${action.reason}. ${action.shadow_mode ? '[SHADOW MODE]' : ''}`,
-      ]
-    );
+  const alertId = await createAlert({
+    user_id: action.user_id,
+    priority,
+    title: `Enforcement: ${action.reason_code}`,
+    description: `Automated enforcement action (${action.action_type}) applied. Reason: ${action.reason}. ${action.shadow_mode ? '[SHADOW MODE]' : ''}`,
+    source: 'enforcement',
+    metadata: {
+      action_id: action.id,
+      action_type: action.action_type,
+      reason_code: action.reason_code,
+      shadow_mode: action.shadow_mode,
+    },
+  });
 
+  if (alertId) {
     console.log(`[Notification:Admin] Alert created: ${alertId.slice(0, 8)} (priority: ${priority})`);
-    return alertId;
-  } catch (err) {
-    console.error('[Notification] Failed to create admin alert:', err);
-    return null;
   }
+
+  return alertId;
 }
 
 /**

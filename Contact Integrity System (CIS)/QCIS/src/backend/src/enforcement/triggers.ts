@@ -14,7 +14,17 @@ export enum ActionType {
   TEMPORARY_RESTRICTION = 'temporary_restriction',
   ACCOUNT_SUSPENSION = 'account_suspension',
   ADMIN_ESCALATION = 'admin_escalation', // Not a direct action; creates a case
+  // Phase 3B — Context-aware action types
+  BOOKING_BLOCKED = 'booking_blocked',
+  BOOKING_FLAGGED = 'booking_flagged',
+  PAYMENT_HELD = 'payment_held',
+  PAYMENT_BLOCKED = 'payment_blocked',
+  PROVIDER_DEMOTED = 'provider_demoted',
+  PROVIDER_SUSPENDED = 'provider_suspended',
+  MESSAGE_THROTTLED = 'message_throttled',
 }
+
+export type EventContext = 'booking' | 'payment' | 'provider' | 'message' | 'general';
 
 export interface TriggerEvaluation {
   action: ActionType | null;
@@ -195,4 +205,84 @@ export function evaluateTrigger(
     effectiveDurationHours: null, // Until admin resolves
     metadata: { tier, historyCount: history.totalActions, patternFlags },
   };
+}
+
+// ─── Phase 3B: Context-Aware Trigger Evaluation ─────────────
+
+/**
+ * Map event type strings to an EventContext.
+ */
+export function eventTypeToContext(eventType: string): EventContext {
+  if (eventType.startsWith('booking.')) return 'booking';
+  if (eventType.startsWith('wallet.') || eventType.startsWith('transaction.')) return 'payment';
+  if (eventType.startsWith('provider.')) return 'provider';
+  if (eventType.startsWith('message.')) return 'message';
+  return 'general';
+}
+
+/**
+ * Apply context-specific overrides to a base trigger evaluation.
+ * Returns a new evaluation with context-appropriate action types.
+ */
+function applyContextOverride(
+  base: TriggerEvaluation,
+  context: EventContext
+): TriggerEvaluation {
+  if (!base.action || context === 'general') return base;
+
+  const isRestrictionOrHigher =
+    base.action === ActionType.TEMPORARY_RESTRICTION ||
+    base.action === ActionType.ACCOUNT_SUSPENSION;
+
+  switch (context) {
+    case 'booking':
+      if (isRestrictionOrHigher) {
+        return { ...base, action: ActionType.BOOKING_BLOCKED };
+      }
+      if (base.action === ActionType.HARD_WARNING) {
+        return { ...base, action: ActionType.BOOKING_FLAGGED };
+      }
+      break;
+
+    case 'payment':
+      if (isRestrictionOrHigher) {
+        return { ...base, action: ActionType.PAYMENT_BLOCKED };
+      }
+      if (base.action === ActionType.HARD_WARNING) {
+        return { ...base, action: ActionType.PAYMENT_HELD };
+      }
+      break;
+
+    case 'provider':
+      if (isRestrictionOrHigher) {
+        return { ...base, action: ActionType.PROVIDER_SUSPENDED };
+      }
+      if (base.action === ActionType.HARD_WARNING) {
+        return { ...base, action: ActionType.PROVIDER_DEMOTED };
+      }
+      break;
+
+    case 'message':
+      if (base.action === ActionType.HARD_WARNING && base.metadata?.historyCount && (base.metadata.historyCount as number) > 0) {
+        return { ...base, action: ActionType.MESSAGE_THROTTLED };
+      }
+      break;
+  }
+
+  return base;
+}
+
+/**
+ * Context-aware trigger evaluation.
+ * Calls base evaluateTrigger() then applies context-specific overrides.
+ * Full backward compatibility: 'general' context returns base evaluation unchanged.
+ */
+export function evaluateContextualTrigger(
+  tier: RiskTier,
+  history: EnforcementHistory,
+  patternFlags: string[],
+  context: EventContext
+): TriggerEvaluation {
+  const base = evaluateTrigger(tier, history, patternFlags);
+  return applyContextOverride(base, context);
 }

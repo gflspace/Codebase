@@ -42,11 +42,15 @@ router.get(
         conditions.push(`u.user_type = $${paramIndex++}`);
         values.push(req.query.user_type);
       }
+      if (req.query.source) {
+        conditions.push(`a.source = $${paramIndex++}`);
+        values.push(req.query.source);
+      }
 
       const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
       const result = await query(
-        `SELECT a.id, a.user_id, a.priority, a.status, a.title, a.description, a.assigned_to, a.risk_signal_ids, a.auto_generated, a.created_at, a.updated_at,
+        `SELECT a.id, a.user_id, a.priority, a.status, a.title, a.description, a.assigned_to, a.risk_signal_ids, a.auto_generated, a.source, a.sla_deadline, a.escalation_count, a.parent_alert_id, a.resolved_at, a.created_at, a.updated_at,
                 u.display_name AS user_name, u.email AS user_email, u.phone AS user_phone, u.user_type, u.service_category, u.trust_score AS user_trust_score
          FROM alerts a
          LEFT JOIN users u ON u.id = a.user_id

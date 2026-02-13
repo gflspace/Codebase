@@ -12,6 +12,11 @@ interface Alert {
   title: string;
   description: string;
   assigned_to: string | null;
+  source: string | null;
+  sla_deadline: string | null;
+  escalation_count: number | null;
+  parent_alert_id: string | null;
+  resolved_at: string | null;
   created_at: string;
   user_name: string | null;
   user_email: string | null;
@@ -28,13 +33,44 @@ const PRIORITY_COLORS: Record<string, string> = {
   low: 'bg-gray-100 text-gray-600',
 };
 
+const SOURCE_COLORS: Record<string, string> = {
+  enforcement: 'bg-indigo-100 text-indigo-700',
+  threshold: 'bg-red-100 text-red-700',
+  trend: 'bg-amber-100 text-amber-700',
+  leakage: 'bg-purple-100 text-purple-700',
+  sla: 'bg-pink-100 text-pink-700',
+};
+
 const SERVICE_CATEGORIES = ['', 'Cleaning', 'Plumbing', 'Electrical', 'Moving', 'Tutoring', 'Handyman', 'Landscaping', 'Pet Care', 'Auto Repair', 'Personal Training'];
+
+function getSlaStatus(slaDeadline: string | null): { label: string; color: string } | null {
+  if (!slaDeadline) return null;
+  const deadline = new Date(slaDeadline);
+  const now = new Date();
+  const diffMs = deadline.getTime() - now.getTime();
+
+  if (diffMs <= 0) {
+    return { label: 'SLA BREACHED', color: 'text-red-600 font-bold' };
+  }
+
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+  if (hours < 1) {
+    return { label: `${minutes}m remaining`, color: 'text-red-500' };
+  }
+  if (hours < 4) {
+    return { label: `${hours}h ${minutes}m remaining`, color: 'text-orange-500' };
+  }
+  return { label: `${hours}h remaining`, color: 'text-gray-500' };
+}
 
 export default function AlertsInbox() {
   const { auth } = useAuth();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [priorityFilter, setPriorityFilter] = useState<string>('');
+  const [sourceFilter, setSourceFilter] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [userTypeFilter, setUserTypeFilter] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -44,7 +80,7 @@ export default function AlertsInbox() {
 
   useEffect(() => {
     loadAlerts();
-  }, [statusFilter, priorityFilter, categoryFilter, userTypeFilter, auth.token]);
+  }, [statusFilter, priorityFilter, sourceFilter, categoryFilter, userTypeFilter, auth.token]);
 
   async function loadAlerts() {
     if (!auth.token) return;
@@ -53,6 +89,7 @@ export default function AlertsInbox() {
       const params: Record<string, string> = {};
       if (statusFilter) params.status = statusFilter;
       if (priorityFilter) params.priority = priorityFilter;
+      if (sourceFilter) params.source = sourceFilter;
       if (categoryFilter) params.category = categoryFilter;
       if (userTypeFilter) params.user_type = userTypeFilter;
       const result = await api.getAlerts(auth.token, params);
@@ -130,6 +167,16 @@ export default function AlertsInbox() {
           <option value="low">Low</option>
         </select>
 
+        {/* Source filter */}
+        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="text-xs border border-gray-300 rounded-md px-2 py-1">
+          <option value="">All sources</option>
+          <option value="enforcement">Enforcement</option>
+          <option value="threshold">Threshold</option>
+          <option value="trend">Trend</option>
+          <option value="leakage">Leakage</option>
+          <option value="sla">SLA</option>
+        </select>
+
         {/* Category filter */}
         <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="text-xs border border-gray-300 rounded-md px-2 py-1">
           <option value="">All categories</option>
@@ -153,47 +200,69 @@ export default function AlertsInbox() {
             <div className="text-gray-400 text-center py-12">No alerts found.</div>
           ) : (
             <div className="space-y-3">
-              {alerts.map((alert) => (
-                <div
-                  key={alert.id}
-                  className={`bg-white rounded-lg border p-4 cursor-pointer transition-colors ${
-                    selectedAlert?.id === alert.id ? 'border-cis-green ring-1 ring-cis-green' : 'border-gray-200 hover:bg-gray-50'
-                  }`}
-                  onClick={() => { setSelectedAlert(alert); setAiSummary(null); }}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${PRIORITY_COLORS[alert.priority] || ''}`}>
-                          {alert.priority}
-                        </span>
-                        <span className="text-xs text-gray-400">
-                          {new Date(alert.created_at).toLocaleString()}
-                        </span>
-                        {alert.service_category && (
-                          <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">{alert.service_category}</span>
+              {alerts.map((alert) => {
+                const slaStatus = getSlaStatus(alert.sla_deadline);
+                const escalationCount = alert.escalation_count || 0;
+
+                return (
+                  <div
+                    key={alert.id}
+                    className={`bg-white rounded-lg border p-4 cursor-pointer transition-colors ${
+                      selectedAlert?.id === alert.id ? 'border-cis-green ring-1 ring-cis-green' : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                    onClick={() => { setSelectedAlert(alert); setAiSummary(null); }}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${PRIORITY_COLORS[alert.priority] || ''}`}>
+                            {alert.priority}
+                          </span>
+                          {alert.source && (
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${SOURCE_COLORS[alert.source] || 'bg-gray-100 text-gray-600'}`}>
+                              {alert.source}
+                            </span>
+                          )}
+                          {escalationCount > 0 && (
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-pink-100 text-pink-700">
+                              {escalationCount}x escalated
+                            </span>
+                          )}
+                          <span className="text-xs text-gray-400">
+                            {new Date(alert.created_at).toLocaleString()}
+                          </span>
+                          {alert.service_category && (
+                            <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">{alert.service_category}</span>
+                          )}
+                        </div>
+                        <h3 className="font-medium text-gray-900">{alert.title}</h3>
+                        <div className="flex items-center gap-3 mt-1">
+                          <p className="text-xs text-gray-500">
+                            {alert.user_name || alert.user_id.slice(0, 8)} {alert.user_type ? `(${alert.user_type})` : ''}
+                          </p>
+                          {slaStatus && ['open', 'assigned', 'in_progress'].includes(alert.status) && (
+                            <span className={`text-xs ${slaStatus.color}`}>
+                              {slaStatus.label}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        {alert.status === 'open' && (
+                          <button onClick={(e) => { e.stopPropagation(); assignToMe(alert.id); }} className="px-3 py-1 text-xs bg-cis-green-soft text-cis-green rounded hover:bg-cis-green hover:text-white transition-colors">
+                            Claim
+                          </button>
+                        )}
+                        {['open', 'assigned'].includes(alert.status) && (
+                          <button onClick={(e) => { e.stopPropagation(); dismissAlert(alert.id); }} className="px-3 py-1 text-xs bg-gray-100 text-gray-500 rounded hover:bg-gray-200 transition-colors">
+                            Dismiss
+                          </button>
                         )}
                       </div>
-                      <h3 className="font-medium text-gray-900">{alert.title}</h3>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {alert.user_name || alert.user_id.slice(0, 8)} {alert.user_type ? `(${alert.user_type})` : ''}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 ml-4">
-                      {alert.status === 'open' && (
-                        <button onClick={(e) => { e.stopPropagation(); assignToMe(alert.id); }} className="px-3 py-1 text-xs bg-cis-green-soft text-cis-green rounded hover:bg-cis-green hover:text-white transition-colors">
-                          Claim
-                        </button>
-                      )}
-                      {['open', 'assigned'].includes(alert.status) && (
-                        <button onClick={(e) => { e.stopPropagation(); dismissAlert(alert.id); }} className="px-3 py-1 text-xs bg-gray-100 text-gray-500 rounded hover:bg-gray-200 transition-colors">
-                          Dismiss
-                        </button>
-                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -218,6 +287,27 @@ export default function AlertsInbox() {
                     <p className="text-gray-700">{selectedAlert.description}</p>
                   </div>
                 )}
+
+                {/* Source & SLA Info */}
+                <div className="flex flex-wrap gap-2">
+                  {selectedAlert.source && (
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${SOURCE_COLORS[selectedAlert.source] || 'bg-gray-100 text-gray-600'}`}>
+                      Source: {selectedAlert.source}
+                    </span>
+                  )}
+                  {(() => {
+                    const sla = getSlaStatus(selectedAlert.sla_deadline);
+                    if (sla && ['open', 'assigned', 'in_progress'].includes(selectedAlert.status)) {
+                      return <span className={`text-xs ${sla.color}`}>SLA: {sla.label}</span>;
+                    }
+                    return null;
+                  })()}
+                  {(selectedAlert.escalation_count || 0) > 0 && (
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-pink-100 text-pink-700">
+                      Escalated {selectedAlert.escalation_count}x
+                    </span>
+                  )}
+                </div>
 
                 {/* User Details */}
                 <div className="border-t border-gray-100 pt-3">
