@@ -20,6 +20,8 @@ import { registerContagionConsumer } from './detection/consumers/contagion';
 import { registerThresholdAlertConsumer } from './alerting/consumers/threshold';
 import { registerTrendAlertConsumer } from './alerting/consumers/trend';
 import { registerLeakageAlertConsumer } from './alerting/consumers/leakage';
+import { registerAnomalyAlertConsumer } from './alerting/consumers/anomaly';
+import { registerClusterAlertConsumer } from './alerting/consumers/cluster';
 import { startSlaEscalation, stopSlaEscalation } from './alerting/sla-escalation';
 import { globalLimiter, aiLimiter, writeLimiter } from './api/middleware/rateLimit';
 import { closeRedis, testRedisConnection } from './events/redis';
@@ -185,7 +187,9 @@ async function start(): Promise<void> {
   registerThresholdAlertConsumer();
   registerTrendAlertConsumer();
   registerLeakageAlertConsumer();
-  console.log('  Event consumers: 15 registered (detection, scoring, enforcement + 5 Phase 2C detectors + 4 Phase 3A intelligence + 3 Phase 3C alerting)');
+  registerAnomalyAlertConsumer();
+  registerClusterAlertConsumer();
+  console.log('  Event consumers: 17 registered (detection, scoring, enforcement + 5 Phase 2C detectors + 4 Phase 3A intelligence + 5 Phase 3C alerting)');
 
   // Recover pending events from last crash (durable bus only)
   const bus = getEventBus();

@@ -302,6 +302,14 @@ export const resetPasswordSchema = z.object({
   new_password: z.string().min(8).max(128),
 });
 
+export const recalculateScoresSchema = z.object({
+  user_ids: z.array(z.string().uuid()).optional(),
+  min_score: z.number().min(0).max(100).optional(),
+}).refine(
+  data => !data.user_ids || data.user_ids.length > 0,
+  { message: 'user_ids array must not be empty if provided' }
+);
+
 // ─── Ratings ────────────────────────────────────────────────
 
 export const createRatingSchema = z.object({
@@ -336,6 +344,16 @@ export const networkQuerySchema = z.object({
 export const deviceQuerySchema = paginationQuery.extend({
   user_id: z.string().uuid().optional(),
   device_hash: z.string().max(64).optional(),
+});
+
+export const clusterQuerySchema = z.object({
+  min_size: z.coerce.number().int().min(2).max(100).default(3),
+});
+
+export const pathRequestSchema = z.object({
+  source_user_id: z.string().uuid(),
+  target_user_id: z.string().uuid(),
+  max_depth: z.coerce.number().int().min(1).max(6).default(5),
 });
 
 // ─── Evaluate (Phase 3B) ────────────────────────────────────

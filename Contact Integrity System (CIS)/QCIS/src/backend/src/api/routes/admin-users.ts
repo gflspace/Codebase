@@ -4,7 +4,7 @@ import { query, transaction } from '../../database/connection';
 import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { resolvePermissions } from '../middleware/permissions';
 import { validate, validateParams } from '../middleware/validation';
-import { createAdminSchema, updateAdminSchema, resetPasswordSchema, uuidParam } from '../schemas';
+import { createAdminSchema, updateAdminSchema, resetPasswordSchema, recalculateScoresSchema, uuidParam } from '../schemas';
 import { generateId } from '../../shared/utils';
 
 const router = Router();
@@ -309,6 +309,122 @@ router.post(
       res.json({ data: { message: 'Password reset successfully', admin: result } });
     } catch (error) {
       console.error('Reset admin password error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// POST /api/admin/users/recalculate-scores — trigger batch score recalculation
+router.post(
+  '/recalculate-scores',
+  authenticateJWT,
+  requirePermission('settings.manage_admins'),
+  validate(recalculateScoresSchema),
+  async (req: Request, res: Response) => {
+    try {
+      const { user_ids, min_score } = req.body as {
+        user_ids?: string[];
+        min_score?: number;
+      };
+
+      // Query to estimate affected users
+      let countResult;
+      if (user_ids && user_ids.length > 0) {
+        const placeholders = user_ids.map((_, i) => `$${i + 1}`).join(',');
+        countResult = await query(
+          `SELECT COUNT(*) FROM users WHERE id IN (${placeholders}) AND status = 'active'`,
+          user_ids
+        );
+      } else if (min_score !== undefined && min_score > 0) {
+        countResult = await query(
+          `SELECT COUNT(*) FROM users WHERE status = 'active' AND trust_score >= $1`,
+          [min_score]
+        );
+      } else {
+        countResult = await query(`SELECT COUNT(*) FROM users WHERE status = 'active'`);
+      }
+
+      const estimatedUsers = parseInt(countResult.rows[0].count, 10);
+
+      // Log audit trail
+      await query(
+        `INSERT INTO audit_logs (id, actor, actor_type, action, entity_type, entity_id, details, ip_address)
+         VALUES ($1, $2, 'admin', 'admin.recalculate_scores_triggered', 'system', 'scoring', $3, $4)`,
+        [
+          generateId(),
+          req.adminUser!.id,
+          JSON.stringify({
+            triggered_by: req.adminUser!.email,
+            user_ids: user_ids || null,
+            min_score: min_score || null,
+            estimated_users: estimatedUsers,
+          }),
+          req.headers['x-forwarded-for'] || req.socket.remoteAddress || '',
+        ]
+      );
+
+      // Process in background (non-blocking)
+      // Import computeRiskScore dynamically to avoid circular deps
+      setImmediate(async () => {
+        try {
+          const { computeRiskScore } = await import('../../scoring/index');
+          let usersToProcess;
+
+          if (user_ids && user_ids.length > 0) {
+            const placeholders = user_ids.map((_, i) => `$${i + 1}`).join(',');
+            const result = await query(
+              `SELECT id FROM users WHERE id IN (${placeholders}) AND status = 'active'`,
+              user_ids
+            );
+            usersToProcess = result.rows;
+          } else if (min_score !== undefined && min_score > 0) {
+            const result = await query(
+              `SELECT id FROM users WHERE status = 'active' AND trust_score >= $1`,
+              [min_score]
+            );
+            usersToProcess = result.rows;
+          } else {
+            const result = await query(`SELECT id FROM users WHERE status = 'active'`);
+            usersToProcess = result.rows;
+          }
+
+          console.log(`[Admin] Recalculating scores for ${usersToProcess.length} users (triggered by ${req.adminUser!.email})`);
+
+          let processed = 0;
+          let succeeded = 0;
+          let failed = 0;
+
+          for (const user of usersToProcess) {
+            try {
+              await computeRiskScore(user.id);
+              succeeded++;
+            } catch (error) {
+              failed++;
+              console.error(`[Admin] Failed to recalculate score for user ${user.id}:`, error);
+            }
+            processed++;
+
+            // Log progress every 50 users
+            if (processed % 50 === 0) {
+              console.log(`[Admin] Recalculation progress: ${processed}/${usersToProcess.length} (${succeeded} succeeded, ${failed} failed)`);
+            }
+          }
+
+          console.log(`[Admin] Recalculation complete: ${processed} total, ${succeeded} succeeded, ${failed} failed`);
+        } catch (error) {
+          console.error('[Admin] Background recalculation error:', error);
+        }
+      });
+
+      // Return immediate response
+      res.status(202).json({
+        status: 'started',
+        estimated_users: estimatedUsers,
+        message: 'Score recalculation started in background. Check server logs for progress.',
+      });
+
+    } catch (error) {
+      console.error('Recalculate scores error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }
