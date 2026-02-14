@@ -59,6 +59,11 @@ const GROOMING_LANGUAGE_KEYWORDS = [
   'i\'ll give you a discount', 'better price privately',
   'we can work something out', 'side deal',
   'privately', 'in private', 'just between us',
+  // Phase 4 — Discount/off-platform pricing keywords
+  'special price', 'cheaper outside', 'half price', 'save money',
+  'cut out middleman', 'no service fee', 'pay me directly',
+  'i give discount', 'better rate', 'cash deal', 'cash payment',
+  'negotiate price', 'off-app price',
 ];
 
 // ─── Keyword Detection ────────────────────────────────────────

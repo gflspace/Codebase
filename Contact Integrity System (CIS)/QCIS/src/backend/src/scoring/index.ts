@@ -37,9 +37,11 @@ import {
   aggregateCommunicationInputs,
   aggregateHistoricalInputs,
   aggregateKYCInputs,
+  aggregateNetworkPenalty,
 } from './aggregator-v2';
 
 import { assignTierWithTrend, RiskTier } from './tiers';
+import { applyRiskDecay } from './decay';
 
 export interface ScoringResult {
   user_id: string;
@@ -73,6 +75,20 @@ export async function computeRiskScore(userId: string): Promise<ScoringResult> {
     result = await computeRiskScoreV2(userId);
   } else {
     result = await computeRiskScoreV1(userId);
+  }
+
+  // Apply risk decay if user has no recent signals
+  try {
+    const decayedScore = await applyRiskDecay(userId);
+    if (decayedScore < result.score && decayedScore > 0) {
+      console.log(`[Scoring] Decay applied: userId=${userId.slice(0, 8)}, rawScore=${result.score}, decayedScore=${decayedScore}`);
+      result.score = decayedScore;
+      const reassigned = assignTierWithTrend(decayedScore, [result.score]);
+      result.tier = reassigned.tier;
+      result.trend = reassigned.trend;
+    }
+  } catch {
+    // Decay failure is non-blocking
   }
 
   // Cache result
@@ -115,14 +131,15 @@ async function computeRiskScoreV1(userId: string): Promise<ScoringResult> {
 // ─── V2 Pipeline (5-component) ─────────────────────────────
 
 async function computeRiskScoreV2(userId: string): Promise<ScoringResult> {
-  // Step 1: Aggregate all 5 components in parallel
-  const [behavioralInputs, financialInputs, communicationInputs, historicalInputs, kycInputs] =
+  // Step 1: Aggregate all 5 components + network penalty in parallel
+  const [behavioralInputs, financialInputs, communicationInputs, historicalInputs, kycInputs, networkPenalty] =
     await Promise.all([
       aggregateBehavioralInputsV2(userId),
       aggregateFinancialInputs(userId),
       aggregateCommunicationInputs(userId),
       aggregateHistoricalInputs(userId),
       aggregateKYCInputs(userId),
+      aggregateNetworkPenalty(userId),
     ]);
 
   // Step 2: Compute per-component scores
@@ -132,6 +149,7 @@ async function computeRiskScoreV2(userId: string): Promise<ScoringResult> {
     communication: { score: computeCommunicationScore(communicationInputs), inputs: communicationInputs },
     historical: { score: computeHistoricalScore(historicalInputs), inputs: historicalInputs },
     kyc: { score: computeKYCScore(kycInputs), inputs: kycInputs },
+    network_penalty: networkPenalty > 0 ? { score: networkPenalty, inputs: { penalty: networkPenalty } } : undefined,
   };
 
   // Step 3: Calculate composite trust score
@@ -267,6 +285,11 @@ export function registerScoringConsumer(): void {
       EventType.PROVIDER_REGISTERED,
       EventType.PROVIDER_UPDATED,
       EventType.USER_REGISTERED,
+      // Phase 4 — Dispute, refund & profile events
+      EventType.DISPUTE_OPENED,
+      EventType.DISPUTE_RESOLVED,
+      EventType.REFUND_PROCESSED,
+      EventType.PROFILE_UPDATED,
     ],
     handler: async (event: DomainEvent) => {
       const userId = extractUserId(event.payload);

@@ -68,8 +68,12 @@ export async function aggregateBehavioralInputsV2(userId: string): Promise<Behav
     );
     const burstCount = burstResult.rows.length;
 
+    // Phase 4: Boost cancellation rate if contact-then-cancel correlations found
+    const cancelBoost = await getCancellationCorrelationBoost(userId);
+    const boostedCancellationRate = Math.min(1.0, cancellationRate * cancelBoost);
+
     return {
-      booking_cancellation_rate: cancellationRate,
+      booking_cancellation_rate: boostedCancellationRate,
       booking_time_anomaly_count: anomalyCount,
       dormant_reactivated: dormantReactivated,
       activity_burst_count: burstCount,
@@ -391,6 +395,76 @@ export async function aggregateKYCInputs(userId: string): Promise<KYCInputs> {
     };
   } catch {
     return { verification_status: 'unverified', account_age_days: 0, profile_completeness: 0 };
+  }
+}
+
+// ─── Network Penalty Aggregation ─────────────────────────────
+
+export async function aggregateNetworkPenalty(userId: string): Promise<number> {
+  try {
+    let penalty = 0;
+
+    // Shared device with suspended user: +3
+    const suspendedDeviceResult = await query(
+      `SELECT COUNT(*) AS count
+       FROM user_devices ud1
+       JOIN user_devices ud2 ON ud1.device_hash = ud2.device_hash AND ud1.user_id != ud2.user_id
+       JOIN users u ON u.id = ud2.user_id AND u.status = 'suspended'
+       WHERE ud1.user_id = $1`,
+      [userId]
+    );
+    if (parseInt(suspendedDeviceResult.rows[0].count, 10) > 0) {
+      penalty += 3;
+    }
+
+    // Shared device with high-risk user (trust_score > 60): +2
+    const highRiskDeviceResult = await query(
+      `SELECT COUNT(*) AS count
+       FROM user_devices ud1
+       JOIN user_devices ud2 ON ud1.device_hash = ud2.device_hash AND ud1.user_id != ud2.user_id
+       JOIN users u ON u.id = ud2.user_id AND u.trust_score > 60 AND u.status != 'suspended'
+       WHERE ud1.user_id = $1`,
+      [userId]
+    );
+    if (parseInt(highRiskDeviceResult.rows[0].count, 10) > 0) {
+      penalty += 2;
+    }
+
+    // 3+ relationships with high-risk users: +2
+    const highRiskRelResult = await query(
+      `SELECT COUNT(*) AS count
+       FROM user_relationships ur
+       JOIN users u ON u.id = CASE WHEN ur.user_a_id = $1 THEN ur.user_b_id ELSE ur.user_a_id END
+       WHERE (ur.user_a_id = $1 OR ur.user_b_id = $1)
+         AND u.trust_score > 60`,
+      [userId]
+    );
+    if (parseInt(highRiskRelResult.rows[0].count, 10) >= 3) {
+      penalty += 2;
+    }
+
+    return Math.min(penalty, 7); // Cap network penalty
+  } catch {
+    return 0;
+  }
+}
+
+// ─── Cancellation Pattern Boost from Correlations ────────────
+
+export async function getCancellationCorrelationBoost(userId: string): Promise<number> {
+  try {
+    const result = await query(
+      `SELECT COUNT(*) AS count
+       FROM signal_correlations
+       WHERE user_id = $1
+         AND correlation_type = 'contact_then_cancel'
+         AND created_at >= NOW() - INTERVAL '30 days'`,
+      [userId]
+    );
+    const count = parseInt(result.rows[0].count, 10);
+    return count > 0 ? 1.5 : 1.0; // 1.5x boost if correlations found
+  } catch {
+    return 1.0;
   }
 }
 

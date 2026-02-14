@@ -7,6 +7,7 @@ import SignalBreakdown from './SignalBreakdown';
 import LeakageFunnel from './LeakageFunnel';
 import NetworkGraph from './NetworkGraph';
 import ActivityTimeline from './ActivityTimeline';
+import CancellationClusters from './CancellationClusters';
 
 export default function IntelligenceDashboard() {
   return (
@@ -23,6 +24,7 @@ export default function IntelligenceDashboard() {
           <ExecutiveSummary />
           <SignalBreakdown />
           <LeakageFunnel />
+          <CancellationClusters />
           <NetworkGraph />
           <ActivityTimeline />
         </div>

@@ -40,11 +40,18 @@ function ConversionRate({ from, to }: { from: number; to: number }) {
   );
 }
 
+interface RevenueTrend { period: string; amount: number }
+
+const TIME_RANGES = ['30d', '60d', '90d'] as const;
+
 export default function LeakageFunnel() {
   const { auth } = useAuth();
   const { filterParams } = useDashboardFilters();
   const [funnel, setFunnel] = useState<LeakageFunnelData | null>(null);
   const [destinations, setDestinations] = useState<LeakageDestination[]>([]);
+  const [revenueTrend, setRevenueTrend] = useState<RevenueTrend[]>([]);
+  const [estimatedLoss, setEstimatedLoss] = useState<number>(0);
+  const [trendRange, setTrendRange] = useState<typeof TIME_RANGES[number]>('30d');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,6 +69,32 @@ export default function LeakageFunnel() {
         if (!cancelled) {
           setFunnel(funnelRes.data);
           setDestinations(destRes.data);
+
+          // Calculate estimated revenue loss from leakage events
+          try {
+            const lossRes = await api.fetchWithAuth(auth.token, `/api/intelligence/leakage?limit=200`);
+            const lossData = await lossRes.json();
+            const events = lossData.data || [];
+            const totalLoss = events.reduce((sum: number, e: Record<string, unknown>) => {
+              return sum + (Number(e.estimated_revenue_loss) || 0);
+            }, 0);
+            if (!cancelled) {
+              setEstimatedLoss(totalLoss);
+              // Build trend buckets by week
+              const buckets: Record<string, number> = {};
+              for (const e of events) {
+                const week = new Date(String(e.created_at)).toISOString().slice(0, 10);
+                buckets[week] = (buckets[week] || 0) + (Number(e.estimated_revenue_loss) || 0);
+              }
+              setRevenueTrend(
+                Object.entries(buckets)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([period, amount]) => ({ period, amount }))
+              );
+            }
+          } catch {
+            // Revenue data is supplementary — failure is non-blocking
+          }
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load leakage funnel');
@@ -117,8 +150,48 @@ export default function LeakageFunnel() {
           ))}
         </div>
 
-        {/* Top destinations */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        {/* Revenue at Risk + Top destinations */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4 flex flex-col gap-4">
+          {/* Estimated Revenue Loss */}
+          <div>
+            <h4 className="text-xs font-medium text-gray-500 mb-2">Estimated Revenue at Risk</h4>
+            <div className="text-2xl font-bold text-red-600">
+              ${estimatedLoss.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </div>
+            {/* Trend range selector */}
+            <div className="flex gap-1 mt-2">
+              {TIME_RANGES.map((range) => (
+                <button
+                  key={range}
+                  onClick={() => setTrendRange(range)}
+                  className={`text-[10px] px-2 py-0.5 rounded ${
+                    trendRange === range ? 'bg-red-100 text-red-700 font-medium' : 'bg-gray-50 text-gray-400'
+                  }`}
+                >
+                  {range}
+                </button>
+              ))}
+            </div>
+            {/* Mini trend bars */}
+            {revenueTrend.length > 0 && (
+              <div className="flex items-end gap-px mt-2 h-10">
+                {revenueTrend.slice(-14).map((t, i) => {
+                  const maxAmt = Math.max(...revenueTrend.map((x) => x.amount), 1);
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 bg-red-300 rounded-t"
+                      style={{ height: `${Math.max(2, (t.amount / maxAmt) * 100)}%` }}
+                      title={`${t.period}: $${t.amount}`}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Top Destinations */}
+          <div>
           <h4 className="text-xs font-medium text-gray-500 mb-3">Top Destinations</h4>
           {destinations.length === 0 ? (
             <p className="text-xs text-gray-400">No destination data yet</p>
@@ -141,6 +214,7 @@ export default function LeakageFunnel() {
               })}
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>

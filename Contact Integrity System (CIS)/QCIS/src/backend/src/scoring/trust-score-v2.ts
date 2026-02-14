@@ -21,6 +21,7 @@ export interface TrustScoreFactorsV2 {
   communication: ComponentScore<CommunicationInputs>;
   historical: ComponentScore<HistoricalInputs>;
   kyc: ComponentScore<KYCInputs>;
+  network_penalty?: ComponentScore<{ penalty: number }>;
 }
 
 export interface TrustScoreResultV2 {
@@ -142,17 +143,27 @@ export function computeKYCScore(inputs: KYCInputs): number {
     inputs.account_age_days > 180 ? 3 :
     inputs.account_age_days > 30 ? 1 : 0;
   const completenessReduction = inputs.profile_completeness > 0.8 ? 2 : 0;
-  return clamp(10 - verifiedReduction - ageReduction - completenessReduction, 0, 10);
+
+  // Phase 4: New account risk boost
+  const newAccountBoost =
+    inputs.account_age_days < 3 ? 5 :
+    inputs.account_age_days < 7 ? 3 : 0;
+  // No verified phone/email adds risk
+  const unverifiedBoost = inputs.verification_status === 'unverified' ? 2 : 0;
+
+  return clamp(10 - verifiedReduction - ageReduction - completenessReduction + newAccountBoost + unverifiedBoost, 0, 10);
 }
 
 // ─── Master Calculator ─────────────────────────────────────
 
 export function calculateTrustScoreV2(factors: TrustScoreFactorsV2): TrustScoreResultV2 {
+  const networkPenalty = factors.network_penalty?.score ?? 0;
   const score =
     factors.behavioral.score +
     factors.financial.score +
     factors.communication.score +
     factors.historical.score +
-    factors.kyc.score;
+    factors.kyc.score +
+    networkPenalty;
   return { score: Math.round(score * 100) / 100, factors };
 }

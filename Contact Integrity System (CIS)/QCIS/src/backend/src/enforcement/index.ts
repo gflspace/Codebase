@@ -7,7 +7,7 @@
 
 import { DomainEvent, EventType } from '../events/types';
 import { query } from '../database/connection';
-import { evaluateTrigger, evaluateContextualTrigger, getEnforcementHistory, ActionType, EventContext, eventTypeToContext } from './triggers';
+import { evaluateTrigger, evaluateContextualTrigger, getEnforcementHistory, ActionType, EventContext, eventTypeToContext, TriggerEvaluation } from './triggers';
 import { executeAction } from './actions';
 import { notifyUser, createAdminAlert, createEscalationCase } from './notifications';
 import { RiskTier } from '../scoring/tiers';
@@ -65,13 +65,10 @@ export async function processEnforcement(userId: string, context?: EventContext,
     return;
   }
 
-  // Step 4: Evaluate triggers (context-aware when context is provided)
-  let evaluation = context
-    ? evaluateContextualTrigger(tier, history, patternFlags, context)
-    : evaluateTrigger(tier, history, patternFlags);
-
-  // Step 4.5: Evaluate admin rules (Layer 9)
+  // Step 4: Evaluate admin rules FIRST (rules take precedence over hardcoded triggers)
   const resolvedEventType = eventType || (context ? `${context}.event` : 'general.event');
+  let evaluation: TriggerEvaluation | null = null;
+
   try {
     const rules = await loadActiveRules(resolvedEventType);
     if (rules.length > 0) {
@@ -83,7 +80,7 @@ export async function processEnforcement(userId: string, context?: EventContext,
       const ruleContext = await buildRuleContext(userId, score, tier, history, patternFlags, resolvedEventType);
       const ruleResult = await evaluateRules(rules, ruleContext, userId);
 
-      // If an enforcement_trigger rule matched, override the hardcoded evaluation
+      // If an enforcement_trigger rule matched, use the rule-defined action
       if (ruleResult.enforcementOverride) {
         evaluation = ruleResult.enforcementOverride;
       }
@@ -93,6 +90,13 @@ export async function processEnforcement(userId: string, context?: EventContext,
     }
   } catch (err) {
     console.error('[Enforcement] Rule evaluation error (non-fatal):', err);
+  }
+
+  // Step 4.5: Fall through to hardcoded triggers only if no rules matched
+  if (!evaluation) {
+    evaluation = context
+      ? evaluateContextualTrigger(tier, history, patternFlags, context)
+      : evaluateTrigger(tier, history, patternFlags);
   }
 
   if (!evaluation.action) return;
@@ -164,6 +168,11 @@ export function registerEnforcementConsumer(): void {
       EventType.PROVIDER_UPDATED,
       EventType.CONTACT_FIELD_CHANGED,
       EventType.RATING_SUBMITTED,
+      // Phase 4 — Dispute, refund & profile events
+      EventType.DISPUTE_OPENED,
+      EventType.DISPUTE_RESOLVED,
+      EventType.REFUND_PROCESSED,
+      EventType.PROFILE_UPDATED,
     ],
     handler: async (event: DomainEvent) => {
       // Extract userId — check sender_id, user_id, client_id, provider_id (follows scoring pattern)

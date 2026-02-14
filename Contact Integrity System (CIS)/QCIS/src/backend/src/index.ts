@@ -17,6 +17,7 @@ import { registerLeakageConsumer } from './detection/consumers/leakage-tracking'
 import { registerRelationshipConsumer } from './detection/consumers/relationship-tracking';
 import { registerDeviceFingerprintConsumer } from './detection/consumers/device-fingerprint';
 import { registerContagionConsumer } from './detection/consumers/contagion';
+import { registerCorrelationConsumer } from './detection/consumers/correlation-engine';
 import { registerThresholdAlertConsumer } from './alerting/consumers/threshold';
 import { registerTrendAlertConsumer } from './alerting/consumers/trend';
 import { registerLeakageAlertConsumer } from './alerting/consumers/leakage';
@@ -59,6 +60,7 @@ import alertSubscriptionRoutes from './api/routes/alert-subscriptions';
 import adminRulesRoutes from './api/routes/admin-rules';
 import streamRoutes from './api/routes/stream';
 import syncRoutes from './api/routes/sync';
+import correlationRoutes from './api/routes/correlations';
 import { startSync, stopSync } from './sync';
 
 const app = express();
@@ -136,6 +138,7 @@ app.use('/api/alert-subscriptions', alertSubscriptionRoutes);
 app.use('/api/admin/rules', adminRulesRoutes);
 app.use('/api/stream', streamRoutes);
 app.use('/api/sync', syncRoutes);
+app.use('/api/correlations', correlationRoutes);
 
 // Error handling
 app.use(notFound);
@@ -193,13 +196,15 @@ async function start(): Promise<void> {
   registerRelationshipConsumer();
   registerDeviceFingerprintConsumer();
   registerContagionConsumer();
+  // Phase 4 — Cross-signal correlation engine
+  registerCorrelationConsumer();
   // Phase 3C — Alerting engine consumers (Layer 8)
   registerThresholdAlertConsumer();
   registerTrendAlertConsumer();
   registerLeakageAlertConsumer();
   registerAnomalyAlertConsumer();
   registerClusterAlertConsumer();
-  console.log('  Event consumers: 17 registered (detection, scoring, enforcement + 5 Phase 2C detectors + 4 Phase 3A intelligence + 5 Phase 3C alerting)');
+  console.log('  Event consumers: 18 registered (detection, scoring, enforcement + 5 Phase 2C detectors + 4 Phase 3A intelligence + 1 Phase 4 correlation + 5 Phase 3C alerting)');
 
   // Recover pending events from last crash (durable bus only)
   const bus = getEventBus();

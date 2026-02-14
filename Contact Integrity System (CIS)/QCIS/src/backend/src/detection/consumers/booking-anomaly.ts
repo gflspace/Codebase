@@ -207,9 +207,120 @@ async function detectNoShowPattern(
   }
 }
 
+// ─── Phase 4: Repeated Unpaid Booking Detection ────────────────
+
+async function detectRepeatedUnpaid(
+  event: DomainEvent,
+  payload: BookingEventPayload
+): Promise<void> {
+  try {
+    // Query bookings for user pair where status = 'completed' in last 30 days
+    // Cross-reference with payments: bookings with no corresponding completed payment
+    const result = await query(
+      `SELECT b.id AS booking_id, b.amount
+       FROM bookings b
+       LEFT JOIN transactions t
+         ON t.booking_id = b.id AND t.status IN ('completed', 'success')
+       WHERE b.client_id = $1
+         AND b.provider_id = $2
+         AND b.status = 'completed'
+         AND b.updated_at >= NOW() - INTERVAL '30 days'
+         AND t.id IS NULL`,
+      [payload.client_id, payload.provider_id]
+    );
+
+    const unpaidCount = result.rows.length;
+    if (unpaidCount >= 2) {
+      const confidence = Math.min(1.0, 0.6 + (unpaidCount - 2) * 0.1);
+      await persistSignal(event.id, payload.client_id, {
+        signal_type: SignalType.REPEATED_UNPAID_BOOKING,
+        confidence,
+        evidence: {
+          booking_id: payload.booking_id,
+          provider_id: payload.provider_id,
+          unpaid_booking_count: unpaidCount,
+          unpaid_booking_ids: result.rows.map((r: { booking_id: string }) => r.booking_id),
+        },
+        pattern_flags: ['REPEATED_UNPAID'],
+      });
+      console.log(
+        `[BookingAnomaly] REPEATED_UNPAID_BOOKING: user=${payload.client_id.slice(0, 8)}, provider=${payload.provider_id.slice(0, 8)}, count=${unpaidCount}`
+      );
+    }
+  } catch (err) {
+    console.error('[BookingAnomaly] detectRepeatedUnpaid error:', err);
+  }
+}
+
+// ─── Phase 5: Dispute Event Handling ────────────────────────────
+
+async function handleDisputeOpened(event: DomainEvent): Promise<void> {
+  const payload = event.payload as Record<string, unknown>;
+  const userId = String(payload.complainant_id || payload.user_id || '');
+  if (!userId) return;
+
+  try {
+    // If user has 3+ disputes in 90 days → signal PROVIDER_COMPLAINT_CLUSTER
+    const result = await query(
+      `SELECT COUNT(*) AS dispute_count
+       FROM disputes
+       WHERE (complainant_id = $1 OR respondent_id = $1)
+         AND created_at >= NOW() - INTERVAL '90 days'`,
+      [userId]
+    );
+    const disputeCount = parseInt(result.rows[0]?.dispute_count ?? '0', 10);
+
+    if (disputeCount >= 3) {
+      await persistSignal(event.id, userId, {
+        signal_type: SignalType.PROVIDER_COMPLAINT_CLUSTER,
+        confidence: Math.min(1.0, 0.6 + (disputeCount - 3) * 0.1),
+        evidence: {
+          dispute_count_90d: disputeCount,
+          dispute_id: payload.dispute_id,
+        },
+        pattern_flags: ['DISPUTE_CLUSTER'],
+      });
+    }
+
+    // If dispute follows booking completion in <2 hours → potential fraud indicator
+    if (payload.booking_id) {
+      const bookingResult = await query(
+        `SELECT updated_at FROM bookings WHERE id = $1 AND status = 'completed'`,
+        [payload.booking_id]
+      );
+      if (bookingResult.rows.length > 0) {
+        const completedAt = new Date(bookingResult.rows[0].updated_at).getTime();
+        const disputeAt = new Date(event.timestamp).getTime();
+        const hoursDiff = (disputeAt - completedAt) / (1000 * 60 * 60);
+        if (hoursDiff < 2 && hoursDiff >= 0) {
+          await persistSignal(event.id, userId, {
+            signal_type: SignalType.BOOKING_CANCEL_PATTERN,
+            confidence: 0.65,
+            evidence: {
+              booking_id: payload.booking_id,
+              dispute_id: payload.dispute_id,
+              hours_after_completion: Math.round(hoursDiff * 100) / 100,
+              trigger: 'rapid_dispute_after_completion',
+            },
+            pattern_flags: ['RAPID_DISPUTE'],
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[BookingAnomaly] handleDisputeOpened error:', err);
+  }
+}
+
 // ─── Event Handler ──────────────────────────────────────────────
 
 async function handleBookingEvent(event: DomainEvent): Promise<void> {
+  // Handle dispute events separately
+  if (event.type === EventType.DISPUTE_OPENED) {
+    await handleDisputeOpened(event);
+    return;
+  }
+
   const payload = event.payload as unknown as BookingEventPayload;
   if (!payload.client_id) return;
 
@@ -222,6 +333,7 @@ async function handleBookingEvent(event: DomainEvent): Promise<void> {
     case EventType.BOOKING_COMPLETED:
       await detectFakeCompletionFromComplete(event, payload);
       await detectSameProviderRepeat(event, payload);
+      await detectRepeatedUnpaid(event, payload);
       break;
 
     case EventType.BOOKING_CREATED:
@@ -248,6 +360,7 @@ export function registerBookingAnomalyConsumer(): void {
       EventType.BOOKING_CANCELLED,
       EventType.BOOKING_COMPLETED,
       EventType.BOOKING_NO_SHOW,
+      EventType.DISPUTE_OPENED,
     ],
     handler: handleBookingEvent,
   });
@@ -262,5 +375,7 @@ export {
   detectTimeClustering,
   detectValueAnomaly,
   detectNoShowPattern,
+  detectRepeatedUnpaid,
+  handleDisputeOpened,
   handleBookingEvent,
 };

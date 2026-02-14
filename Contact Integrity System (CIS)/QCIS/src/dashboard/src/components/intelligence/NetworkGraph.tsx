@@ -93,6 +93,17 @@ function runForceSimulation(nodes: SimNode[], edges: NetworkEdge[], iterations: 
   }
 }
 
+type FilterMode = 'all' | 'high_risk' | 'suspended';
+
+function tierLabel(score: number | null): string {
+  if (score === null) return 'Unscored';
+  if (score >= 81) return 'Critical';
+  if (score >= 61) return 'High';
+  if (score >= 41) return 'Medium';
+  if (score >= 21) return 'Low';
+  return 'Monitor';
+}
+
 export default function NetworkGraph() {
   const { auth } = useAuth();
   const [userId, setUserId] = useState('');
@@ -102,7 +113,10 @@ export default function NetworkGraph() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
   const [depth, setDepth] = useState(1);
+  const [filterMode, setFilterMode] = useState<FilterMode>('all');
+  const [showContagion, setShowContagion] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const loadGraph = useCallback(async (targetUserId: string) => {
@@ -156,14 +170,14 @@ export default function NetworkGraph() {
       <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Network Graph</h3>
       <div className="bg-white rounded-lg border border-gray-200 p-4">
         {/* Search controls */}
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-4">
           <input
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             placeholder="Enter user UUID..."
-            className="flex-1 text-sm border border-gray-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="flex-1 min-w-[200px] text-sm border border-gray-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           <select
             value={depth}
@@ -174,6 +188,24 @@ export default function NetworkGraph() {
             <option value={2}>Depth 2</option>
             <option value={3}>Depth 3</option>
           </select>
+          <select
+            value={filterMode}
+            onChange={(e) => setFilterMode(e.target.value as FilterMode)}
+            className="text-sm border border-gray-300 rounded-md px-2 py-1.5"
+          >
+            <option value="all">All Nodes</option>
+            <option value="high_risk">High Risk Only</option>
+            <option value="suspended">Suspended Only</option>
+          </select>
+          <label className="flex items-center gap-1 text-xs text-gray-500">
+            <input
+              type="checkbox"
+              checked={showContagion}
+              onChange={(e) => setShowContagion(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Contagion view
+          </label>
           <button
             onClick={handleSearch}
             disabled={loading}
@@ -196,22 +228,50 @@ export default function NetworkGraph() {
               className="w-full border border-gray-100 rounded bg-gray-50"
               style={{ maxHeight: '400px' }}
             >
-              {/* Edges */}
+              {/* Edges with labels */}
               {data.edges.map((edge) => {
                 const a = nodeMap.get(edge.user_a_id);
                 const b = nodeMap.get(edge.user_b_id);
                 if (!a || !b) return null;
+
+                // Filter edges based on mode
+                if (filterMode === 'high_risk') {
+                  const aScore = a.trust_score ?? 0;
+                  const bScore = b.trust_score ?? 0;
+                  if (aScore < 61 && bScore < 61) return null;
+                }
+                if (filterMode === 'suspended') {
+                  if (a.status !== 'suspended' && b.status !== 'suspended') return null;
+                }
+
+                // Contagion view: highlight edges to suspended accounts
+                const isSuspendedLink = showContagion && (a.status === 'suspended' || b.status === 'suspended');
+                const edgeColor = isSuspendedLink ? '#ef4444' : '#d1d5db';
+                const isEdgeHovered = hoveredEdge === edge.id;
+                const midX = (a.x + b.x) / 2;
+                const midY = (a.y + b.y) / 2;
+
                 return (
-                  <line
-                    key={edge.id}
-                    x1={a.x}
-                    y1={a.y}
-                    x2={b.x}
-                    y2={b.y}
-                    stroke="#d1d5db"
-                    strokeWidth={Math.max(1, edge.strength_score * 4)}
-                    strokeOpacity={0.6}
-                  />
+                  <g key={edge.id}>
+                    <line
+                      x1={a.x}
+                      y1={a.y}
+                      x2={b.x}
+                      y2={b.y}
+                      stroke={edgeColor}
+                      strokeWidth={Math.max(1, edge.strength_score * 4)}
+                      strokeOpacity={isSuspendedLink ? 0.8 : 0.6}
+                      strokeDasharray={isSuspendedLink ? '4,2' : undefined}
+                      className="cursor-pointer"
+                      onMouseEnter={() => setHoveredEdge(edge.id)}
+                      onMouseLeave={() => setHoveredEdge(null)}
+                    />
+                    {isEdgeHovered && (
+                      <text x={midX} y={midY - 6} textAnchor="middle" className="text-[8px] fill-gray-500 font-medium">
+                        {edge.interaction_count ?? edge.strength_score.toFixed(1)}
+                      </text>
+                    )}
+                  </g>
                 );
               })}
 
@@ -221,8 +281,19 @@ export default function NetworkGraph() {
                 const isHovered = node.id === hoveredNode;
                 const radius = isCenter ? 12 : 8;
 
+                // Filter nodes
+                if (filterMode === 'high_risk' && !isCenter && (node.trust_score ?? 0) < 61) return null;
+                if (filterMode === 'suspended' && !isCenter && node.status !== 'suspended') return null;
+
+                // Contagion: highlight nodes connected to suspended
+                const isContagionHighlight = showContagion && node.status === 'suspended';
+
                 return (
                   <g key={node.id}>
+                    {/* Contagion glow ring */}
+                    {isContagionHighlight && (
+                      <circle cx={node.x} cy={node.y} r={radius + 5} fill="none" stroke="#ef4444" strokeWidth={2} strokeOpacity={0.4} />
+                    )}
                     <circle
                       cx={node.x}
                       cy={node.y}
@@ -250,22 +321,30 @@ export default function NetworkGraph() {
               })}
             </svg>
 
-            {/* Tooltip */}
+            {/* Enhanced Tooltip */}
             {hoveredNode && (() => {
               const node = nodeMap.get(hoveredNode);
               if (!node) return null;
+              const edgesForNode = data.edges.filter(e => e.user_a_id === node.id || e.user_b_id === node.id);
+              const totalInteractions = edgesForNode.reduce((sum, e) => sum + (e.interaction_count ?? 0), 0);
               return (
                 <div
-                  className="absolute bg-gray-900 text-white text-xs rounded-md px-3 py-2 pointer-events-none shadow-lg z-10"
+                  className="absolute bg-gray-900 text-white text-xs rounded-md px-3 py-2 pointer-events-none shadow-lg z-10 min-w-[160px]"
                   style={{
                     left: `${(node.x / 500) * 100}%`,
                     top: `${(node.y / 400) * 100 - 10}%`,
                     transform: 'translate(-50%, -100%)',
                   }}
                 >
-                  <div className="font-medium">{node.display_name}</div>
-                  <div className="text-gray-300">{node.user_type} - {node.status}</div>
-                  <div className="text-gray-300">Trust: {node.trust_score !== null ? node.trust_score : 'N/A'}</div>
+                  <div className="font-medium mb-1">{node.display_name}</div>
+                  <div className="text-gray-300">{node.user_type} - <span className={node.status === 'suspended' ? 'text-red-400' : ''}>{node.status}</span></div>
+                  <div className="text-gray-300">Risk: {node.trust_score !== null ? `${node.trust_score} (${tierLabel(node.trust_score)})` : 'N/A'}</div>
+                  <div className="text-gray-300">Signals: {(node as Record<string, unknown>).signal_count ?? '-'}</div>
+                  <div className="text-gray-300">Connections: {edgesForNode.length}</div>
+                  {totalInteractions > 0 && <div className="text-gray-300">Interactions: {totalInteractions}</div>}
+                  {(node as Record<string, unknown>).enforcement_status && (
+                    <div className="text-amber-400 mt-1">Enforcement: {String((node as Record<string, unknown>).enforcement_status)}</div>
+                  )}
                 </div>
               );
             })()}

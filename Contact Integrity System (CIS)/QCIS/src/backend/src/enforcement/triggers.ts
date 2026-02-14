@@ -214,9 +214,10 @@ export function evaluateTrigger(
  */
 export function eventTypeToContext(eventType: string): EventContext {
   if (eventType.startsWith('booking.')) return 'booking';
-  if (eventType.startsWith('wallet.') || eventType.startsWith('transaction.')) return 'payment';
+  if (eventType.startsWith('wallet.') || eventType.startsWith('transaction.') || eventType.startsWith('refund.')) return 'payment';
   if (eventType.startsWith('provider.')) return 'provider';
   if (eventType.startsWith('message.')) return 'message';
+  if (eventType.startsWith('dispute.')) return 'booking'; // Disputes are booking context
   return 'general';
 }
 
