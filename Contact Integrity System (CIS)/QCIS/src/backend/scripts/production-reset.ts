@@ -64,6 +64,7 @@ const PRESERVED_TABLES = new Set([
   'detection_rules',
   'risk_decay_config',
   'alert_subscriptions',
+  'sync_watermarks',
 ]);
 
 /**
