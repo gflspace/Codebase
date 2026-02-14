@@ -1,6 +1,6 @@
 // QwickServices CIS — Table/Field Mappings for Data Sync
-// Defines how QwickServices database tables map to CIS domain events.
-// Field names use coalesce patterns to handle schema variations.
+// Defines how QwickServices MySQL tables map to CIS domain events.
+// Column names match the exact QwickServices Laravel schema (blueprint).
 
 import { EventType } from '../events/types';
 
@@ -28,48 +28,142 @@ export interface TableMapping {
   extraFilter?: string;
 }
 
-// ─── Mapping Definitions ─────────────────────────────────────
+// ─── Mapping Definitions (Blueprint-Aligned) ────────────────
 
 export const TABLE_MAPPINGS: TableMapping[] = [
-  // ─── Users ───────────────────────────────────────────────
+  // ─── Categories ────────────────────────────────────────────
+  {
+    sourceTable: 'categories',
+    cursorColumn: 'updated_at',
+    primaryKeyColumn: 'category_id',
+    selectColumns: `
+      category_id, name, parent_id, status, created_at, updated_at
+    `,
+    extraFilter: `status = 'active'`,
+    eventTypeMapping: (row) => {
+      if (row.created_at && row.updated_at) {
+        const created = new Date(String(row.created_at)).getTime();
+        const updated = new Date(String(row.updated_at)).getTime();
+        if (updated - created <= 1000) return EventType.CATEGORY_CREATED;
+      }
+      return EventType.CATEGORY_UPDATED;
+    },
+    transformPayload: (row) => ({
+      category_id: String(row.category_id),
+      name: String(row.name || ''),
+      parent_id: row.parent_id ? String(row.parent_id) : null,
+      status: String(row.status || 'active'),
+    }),
+    extractUserId: () => null, // Categories have no user
+  },
+
+  // ─── Users (Customers) ────────────────────────────────────
   {
     sourceTable: 'users',
     cursorColumn: 'updated_at',
-    primaryKeyColumn: 'id',
+    primaryKeyColumn: 'user_id',
     selectColumns: `
-      id, email, phone, name,
-      COALESCE(user_type, 'client') AS user_type,
-      COALESCE(verification_status, 'unverified') AS verification_status,
-      created_at, updated_at
+      user_id, email, phone, is_active, is_email_verified, is_phone_verified,
+      wallet_balance, booking_count, cancellation_rate, created_at, updated_at
     `,
+    extraFilter: `user_type = 'customer' AND is_active = 1`,
     eventTypeMapping: () => EventType.USER_REGISTERED,
     transformPayload: (row) => ({
-      user_id: String(row.id),
-      external_id: String(row.id),
-      display_name: row.name || null,
+      user_id: String(row.user_id),
+      external_id: String(row.user_id),
       email: row.email || null,
-      user_type: row.user_type || 'client',
+      phone: row.phone || null,
+      user_type: 'customer',
+      metadata: {
+        is_email_verified: row.is_email_verified,
+        is_phone_verified: row.is_phone_verified,
+        wallet_balance: row.wallet_balance != null ? parseFloat(String(row.wallet_balance)) : 0,
+        booking_count: row.booking_count != null ? parseInt(String(row.booking_count), 10) : 0,
+        cancellation_rate: row.cancellation_rate != null ? parseFloat(String(row.cancellation_rate)) : 0,
+      },
     }),
-    extractUserId: (row) => row.id ? String(row.id) : null,
+    extractUserId: (row) => row.user_id ? String(row.user_id) : null,
   },
 
-  // ─── Bookings ────────────────────────────────────────────
+  // ─── Providers ─────────────────────────────────────────────
+  {
+    sourceTable: 'providers',
+    cursorColumn: 'updated_at',
+    primaryKeyColumn: 'provider_id',
+    selectColumns: `
+      provider_id, status, is_kyc_verified, is_active, total_services,
+      completion_rate, rejection_rate, total_earnings, wallet_balance,
+      created_at, updated_at
+    `,
+    extraFilter: `is_active = 1`,
+    eventTypeMapping: (row) => {
+      if (row.created_at && row.updated_at) {
+        const created = new Date(String(row.created_at)).getTime();
+        const updated = new Date(String(row.updated_at)).getTime();
+        if (updated - created <= 1000) return EventType.PROVIDER_REGISTERED;
+      }
+      return EventType.PROVIDER_UPDATED;
+    },
+    transformPayload: (row) => ({
+      provider_id: String(row.provider_id),
+      user_id: String(row.provider_id),
+      metadata: {
+        status: row.status,
+        is_kyc_verified: row.is_kyc_verified,
+        total_services: row.total_services != null ? parseInt(String(row.total_services), 10) : 0,
+        completion_rate: row.completion_rate != null ? parseFloat(String(row.completion_rate)) : 0,
+        rejection_rate: row.rejection_rate != null ? parseFloat(String(row.rejection_rate)) : 0,
+        total_earnings: row.total_earnings != null ? parseFloat(String(row.total_earnings)) : 0,
+        wallet_balance: row.wallet_balance != null ? parseFloat(String(row.wallet_balance)) : 0,
+      },
+    }),
+    extractUserId: (row) => row.provider_id ? String(row.provider_id) : null,
+  },
+
+  // ─── Transactions ──────────────────────────────────────────
+  {
+    sourceTable: 'transactions',
+    cursorColumn: 'created_at',
+    primaryKeyColumn: 'transaction_id',
+    selectColumns: `
+      transaction_id, booking_id, payer_id, payee_id, amount,
+      payment_method, commission_amount, status, created_at
+    `,
+    extraFilter: `status IN ('completed','pending','disputed')`,
+    eventTypeMapping: (row) => {
+      const status = String(row.status || '').toLowerCase();
+      if (status === 'completed') return EventType.TRANSACTION_COMPLETED;
+      if (status === 'failed' || status === 'rejected') return EventType.TRANSACTION_FAILED;
+      if (status === 'cancelled' || status === 'refunded') return EventType.TRANSACTION_CANCELLED;
+      if (status === 'disputed') return EventType.TRANSACTION_COMPLETED; // disputed transactions were completed first
+      return EventType.TRANSACTION_INITIATED;
+    },
+    transformPayload: (row) => ({
+      transaction_id: String(row.transaction_id),
+      user_id: String(row.payer_id),
+      counterparty_id: row.payee_id ? String(row.payee_id) : undefined,
+      booking_id: row.booking_id ? String(row.booking_id) : undefined,
+      amount: parseFloat(String(row.amount || 0)),
+      currency: 'USD',
+      payment_method: String(row.payment_method || 'unknown'),
+      commission_amount: row.commission_amount != null ? parseFloat(String(row.commission_amount)) : undefined,
+      status: String(row.status || 'pending'),
+    }),
+    extractUserId: (row) => row.payer_id ? String(row.payer_id) : null,
+    extractCounterpartyId: (row) => row.payee_id ? String(row.payee_id) : null,
+  },
+
+  // ─── Bookings ──────────────────────────────────────────────
   {
     sourceTable: 'bookings',
     cursorColumn: 'updated_at',
-    primaryKeyColumn: 'id',
+    primaryKeyColumn: 'booking_id',
     selectColumns: `
-      id,
-      COALESCE(user_id, customer_id, client_id) AS client_id,
-      provider_id,
-      COALESCE(service_type, service_category, 'general') AS service_category,
-      COALESCE(amount, total, 0) AS amount,
-      COALESCE(currency, 'USD') AS currency,
-      status,
-      COALESCE(scheduled_at, start_time) AS scheduled_at,
-      COALESCE(cancellation_reason, cancel_reason) AS cancellation_reason,
+      booking_id, booking_uid, user_id, provider_id, service_id, category_id,
+      status, total_amount, scheduled_time, completion_time,
       created_at, updated_at
     `,
+    extraFilter: `status != 'archived'`,
     eventTypeMapping: (row) => {
       const status = String(row.status || '').toLowerCase();
       if (status === 'cancelled') return EventType.BOOKING_CANCELLED;
@@ -79,182 +173,88 @@ export const TABLE_MAPPINGS: TableMapping[] = [
       return EventType.BOOKING_CREATED;
     },
     transformPayload: (row) => ({
-      booking_id: String(row.id),
-      client_id: String(row.client_id),
+      booking_id: String(row.booking_id),
+      booking_uid: row.booking_uid ? String(row.booking_uid) : undefined,
+      client_id: String(row.user_id),
       provider_id: String(row.provider_id),
-      service_category: row.service_category || 'general',
-      amount: parseFloat(String(row.amount || 0)),
-      currency: String(row.currency || 'USD'),
+      service_id: row.service_id ? String(row.service_id) : undefined,
+      category_id: row.category_id ? String(row.category_id) : undefined,
+      amount: parseFloat(String(row.total_amount || 0)),
+      currency: 'USD',
       status: String(row.status || 'pending'),
-      scheduled_at: row.scheduled_at ? new Date(String(row.scheduled_at)).toISOString() : undefined,
+      scheduled_at: row.scheduled_time ? new Date(String(row.scheduled_time)).toISOString() : undefined,
+      completed_at: row.completion_time ? new Date(String(row.completion_time)).toISOString() : undefined,
     }),
-    extractUserId: (row) => row.client_id ? String(row.client_id) : null,
+    extractUserId: (row) => row.user_id ? String(row.user_id) : null,
     extractCounterpartyId: (row) => row.provider_id ? String(row.provider_id) : null,
   },
 
-  // ─── Payments ────────────────────────────────────────────
-  {
-    sourceTable: 'payments',
-    cursorColumn: 'updated_at',
-    primaryKeyColumn: 'id',
-    selectColumns: `
-      id,
-      COALESCE(user_id, customer_id) AS user_id,
-      booking_id,
-      COALESCE(counterparty_id, provider_id) AS counterparty_id,
-      amount,
-      COALESCE(currency, 'USD') AS currency,
-      COALESCE(payment_method, 'unknown') AS payment_method,
-      status,
-      created_at, updated_at
-    `,
-    eventTypeMapping: (row) => {
-      const status = String(row.status || '').toLowerCase();
-      if (status === 'completed' || status === 'success') return EventType.TRANSACTION_COMPLETED;
-      if (status === 'failed' || status === 'rejected') return EventType.TRANSACTION_FAILED;
-      if (status === 'cancelled' || status === 'refunded') return EventType.TRANSACTION_CANCELLED;
-      return EventType.TRANSACTION_INITIATED;
-    },
-    transformPayload: (row) => ({
-      transaction_id: String(row.id),
-      user_id: String(row.user_id),
-      counterparty_id: row.counterparty_id ? String(row.counterparty_id) : undefined,
-      amount: parseFloat(String(row.amount || 0)),
-      currency: String(row.currency || 'USD'),
-      payment_method: String(row.payment_method || 'unknown'),
-      status: String(row.status || 'initiated'),
-    }),
-    extractUserId: (row) => row.user_id ? String(row.user_id) : null,
-    extractCounterpartyId: (row) => row.counterparty_id ? String(row.counterparty_id) : null,
-  },
-
-  // ─── Messages ────────────────────────────────────────────
+  // ─── Messages ──────────────────────────────────────────────
   {
     sourceTable: 'messages',
-    cursorColumn: 'updated_at',
-    primaryKeyColumn: 'id',
+    cursorColumn: 'timestamp',
+    primaryKeyColumn: 'message_id',
     selectColumns: `
-      id,
-      COALESCE(sender_id, user_id) AS sender_id,
-      COALESCE(recipient_id, receiver_id) AS receiver_id,
-      conversation_id,
-      COALESCE(content, body, '') AS content,
-      created_at, updated_at
+      message_id, booking_id, sender_id, receiver_id, message_type, timestamp
     `,
-    eventTypeMapping: (row) => {
-      // If updated_at > created_at + 1 second, treat as edit
-      if (row.updated_at && row.created_at) {
-        const created = new Date(String(row.created_at)).getTime();
-        const updated = new Date(String(row.updated_at)).getTime();
-        if (updated - created > 1000) return EventType.MESSAGE_EDITED;
-      }
-      return EventType.MESSAGE_CREATED;
-    },
+    eventTypeMapping: () => EventType.MESSAGE_CREATED,
     transformPayload: (row) => ({
-      message_id: String(row.id),
+      message_id: String(row.message_id),
       sender_id: String(row.sender_id),
       receiver_id: String(row.receiver_id),
-      conversation_id: row.conversation_id ? String(row.conversation_id) : undefined,
-      content: String(row.content || ''),
+      booking_id: row.booking_id ? String(row.booking_id) : undefined,
+      message_type: row.message_type ? String(row.message_type) : 'text',
     }),
     extractUserId: (row) => row.sender_id ? String(row.sender_id) : null,
     extractCounterpartyId: (row) => row.receiver_id ? String(row.receiver_id) : null,
   },
 
-  // ─── Ratings ─────────────────────────────────────────────
+  // ─── Ratings (optional — may not exist in all deployments) ─
   {
     sourceTable: 'ratings',
     cursorColumn: 'created_at',
     primaryKeyColumn: 'id',
     selectColumns: `
-      id,
-      COALESCE(reviewer_id, client_id, user_id) AS client_id,
-      COALESCE(reviewee_id, provider_id) AS provider_id,
-      booking_id,
-      COALESCE(rating, score) AS score,
-      COALESCE(comment, review, '') AS comment,
-      created_at
+      id, booking_id, reviewer_id, reviewee_id, rating, comment, created_at
     `,
     eventTypeMapping: () => EventType.RATING_SUBMITTED,
     transformPayload: (row) => ({
       rating_id: String(row.id),
-      client_id: String(row.client_id),
-      provider_id: String(row.provider_id),
+      client_id: String(row.reviewer_id),
+      provider_id: String(row.reviewee_id),
       booking_id: row.booking_id ? String(row.booking_id) : undefined,
-      score: parseInt(String(row.score || 5), 10),
+      score: parseInt(String(row.rating || 5), 10),
       comment: row.comment ? String(row.comment) : undefined,
     }),
-    extractUserId: (row) => row.client_id ? String(row.client_id) : null,
-    extractCounterpartyId: (row) => row.provider_id ? String(row.provider_id) : null,
-    extraFilter: undefined, // ratings typically only have created_at
+    extractUserId: (row) => row.reviewer_id ? String(row.reviewer_id) : null,
+    extractCounterpartyId: (row) => row.reviewee_id ? String(row.reviewee_id) : null,
   },
 
-  // ─── Disputes ────────────────────────────────────────────
+  // ─── Disputes (optional — may not exist in all deployments) ─
   {
     sourceTable: 'disputes',
     cursorColumn: 'updated_at',
     primaryKeyColumn: 'id',
     selectColumns: `
-      id,
-      COALESCE(complainant_id, user_id, client_id) AS user_id,
-      COALESCE(respondent_id, provider_id) AS provider_id,
-      booking_id,
-      reason,
-      status,
-      resolution,
-      created_at, updated_at
-    `,
-    eventTypeMapping: () => EventType.BOOKING_UPDATED, // Disputes processed as booking context events
-    transformPayload: (row) => ({
-      booking_id: row.booking_id ? String(row.booking_id) : String(row.id),
-      client_id: String(row.user_id),
-      provider_id: row.provider_id ? String(row.provider_id) : undefined,
-      service_category: 'dispute',
-      status: 'disputed',
-      metadata: {
-        dispute_id: String(row.id),
-        dispute_reason: row.reason,
-        dispute_status: row.status,
-        dispute_resolution: row.resolution,
-      },
-    }),
-    extractUserId: (row) => row.user_id ? String(row.user_id) : null,
-    extractCounterpartyId: (row) => row.provider_id ? String(row.provider_id) : null,
-  },
-
-  // ─── Providers (service providers) ───────────────────────
-  {
-    sourceTable: 'providers',
-    cursorColumn: 'updated_at',
-    primaryKeyColumn: 'id',
-    selectColumns: `
-      id,
-      COALESCE(user_id, id) AS user_id,
-      COALESCE(service_category, specialty, 'general') AS service_category,
-      COALESCE(verification_status, 'unverified') AS verification_status,
-      email, phone,
+      id, booking_id, complainant_id, respondent_id, reason, status, resolution,
       created_at, updated_at
     `,
     eventTypeMapping: (row) => {
-      // If created_at == updated_at (within 1s), treat as new registration
-      if (row.updated_at && row.created_at) {
-        const created = new Date(String(row.created_at)).getTime();
-        const updated = new Date(String(row.updated_at)).getTime();
-        if (updated - created <= 1000) return EventType.PROVIDER_REGISTERED;
-      }
-      return EventType.PROVIDER_UPDATED;
+      const status = String(row.status || '').toLowerCase();
+      if (status === 'resolved_for_complainant' || status === 'resolved_for_respondent' || status === 'dismissed')
+        return EventType.DISPUTE_RESOLVED;
+      return EventType.DISPUTE_OPENED;
     },
     transformPayload: (row) => ({
-      provider_id: String(row.id),
-      user_id: String(row.user_id),
-      service_category: row.service_category || 'general',
-      metadata: {
-        verification_status: row.verification_status,
-        email: row.email,
-        phone: row.phone,
-      },
+      dispute_id: String(row.id),
+      booking_id: row.booking_id ? String(row.booking_id) : '',
+      complainant_id: String(row.complainant_id),
+      respondent_id: row.respondent_id ? String(row.respondent_id) : '',
+      reason: row.reason ? String(row.reason) : '',
+      status: String(row.status || 'open'),
     }),
-    extractUserId: (row) => row.user_id ? String(row.user_id) : null,
+    extractUserId: (row) => row.complainant_id ? String(row.complainant_id) : null,
+    extractCounterpartyId: (row) => row.respondent_id ? String(row.respondent_id) : null,
   },
 ];
 

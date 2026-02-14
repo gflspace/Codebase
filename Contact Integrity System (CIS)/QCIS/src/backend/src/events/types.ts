@@ -14,6 +14,7 @@ export enum EventType {
   TRANSACTION_CANCELLED = 'transaction.cancelled',
 
   // User events
+  USER_LOGGED_IN = 'user.logged_in',
   USER_STATUS_CHANGED = 'user.status_changed',
 
   // Enforcement events
@@ -50,6 +51,16 @@ export enum EventType {
   // Phase 3A — Leakage & relationship events
   LEAKAGE_STAGE_ADVANCED = 'leakage.stage_advanced',
   RELATIONSHIP_UPDATED = 'relationship.updated',
+
+  // Category events
+  CATEGORY_CREATED = 'category.created',
+  CATEGORY_UPDATED = 'category.updated',
+
+  // Phase 4 — Dispute, refund & profile events
+  DISPUTE_OPENED = 'dispute.opened',
+  DISPUTE_RESOLVED = 'dispute.resolved',
+  REFUND_PROCESSED = 'refund.processed',
+  PROFILE_UPDATED = 'user.profile_updated',
 }
 
 export interface DomainEvent {
@@ -191,6 +202,32 @@ export interface RelationshipUpdatedPayload {
   user_b_id: string;
   relationship_type: string;
   interaction_count: number;
+}
+
+export interface DisputeEventPayload {
+  dispute_id: string;
+  booking_id: string;
+  complainant_id: string;
+  respondent_id: string;
+  dispute_type: string;
+  reason: string;
+  status: string;
+}
+
+export interface RefundEventPayload {
+  refund_id: string;
+  transaction_id: string;
+  user_id: string;
+  amount: number;
+  currency: string;
+  reason: string;
+  status: string;
+}
+
+export interface ProfileUpdatedPayload {
+  user_id: string;
+  fields_changed: string[];
+  metadata?: Record<string, unknown>;
 }
 
 // ─── Event Handler Type ───────────────────────────────────────

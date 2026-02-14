@@ -1,6 +1,6 @@
 // QwickServices CIS — Record-to-Event Transformer
 // Converts QwickServices database rows into CIS DomainEvents.
-// Handles user auto-provisioning for unknown users.
+// Handles user auto-provisioning for unknown users and category upserts.
 
 import { DomainEvent, EventType } from '../events/types';
 import { generateId, nowISO } from '../shared/utils';
@@ -72,9 +72,61 @@ export async function ensureUserExists(externalUserId: string): Promise<string> 
 }
 
 /**
+ * Ensure a category exists in CIS database.
+ * Upserts into CIS categories table from QwickServices category data.
+ */
+export async function ensureCategoryExists(
+  externalId: string,
+  name: string,
+  parentId?: string | null,
+  status?: string,
+): Promise<string> {
+  const existing = await query(
+    'SELECT id FROM categories WHERE external_id = $1 LIMIT 1',
+    [externalId]
+  );
+
+  if (existing.rows.length > 0) {
+    // Update if name/status changed
+    await query(
+      `UPDATE categories SET name = $2, status = $3, updated_at = NOW() WHERE external_id = $1`,
+      [externalId, name, status || 'active']
+    );
+    return existing.rows[0].id;
+  }
+
+  // Insert new category
+  const id = generateId();
+  await query(
+    `INSERT INTO categories (id, external_id, name, parent_id, status, created_at, updated_at)
+     VALUES ($1, $2, $3, (SELECT id FROM categories WHERE external_id = $4 LIMIT 1), $5, NOW(), NOW())
+     ON CONFLICT (external_id) DO UPDATE SET name = EXCLUDED.name, status = EXCLUDED.status, updated_at = NOW()`,
+    [id, externalId, name, parentId || '', status || 'active']
+  );
+
+  console.log(`[Sync] Auto-created CIS category for external_id=${externalId} → ${id}`);
+  return id;
+}
+
+/**
  * Ensure all users referenced in a row exist in CIS.
+ * Also handles category rows by upserting into CIS categories table.
  */
 export async function ensureUsersForRow(row: Record<string, unknown>, mapping: TableMapping): Promise<void> {
+  // Handle category rows specially — no user provisioning needed
+  if (mapping.sourceTable === 'categories') {
+    const categoryId = row[mapping.primaryKeyColumn];
+    if (categoryId) {
+      await ensureCategoryExists(
+        String(categoryId),
+        String(row.name || ''),
+        row.parent_id ? String(row.parent_id) : null,
+        row.status ? String(row.status) : 'active',
+      );
+    }
+    return;
+  }
+
   const userId = mapping.extractUserId(row);
   if (userId) {
     await ensureUserExists(userId);

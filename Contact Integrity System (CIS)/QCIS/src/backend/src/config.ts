@@ -103,9 +103,14 @@ export const config = {
     enabled: optional('SYNC_ENABLED', 'false') === 'true',
     intervalMs: parseInt(optional('SYNC_INTERVAL_MS', '30000'), 10),  // 30 seconds default
     batchSize: parseInt(optional('SYNC_BATCH_SIZE', '100'), 10),
+    fallbackMode: optional('SYNC_FALLBACK_MODE', 'false') === 'true', // When webhooks active, sync becomes gap-fill only
+    webhookPushEnabled: optional('WEBHOOK_PUSH_ENABLED', 'false') === 'true', // Toggle push mode
+    fallbackIntervalMs: parseInt(optional('SYNC_FALLBACK_INTERVAL_MS', '60000'), 10), // 60s when in fallback
     db: {
+      driver: optional('SYNC_DB_DRIVER', 'mysql') as 'mysql' | 'pg',
       host: optional('SYNC_DB_HOST', 'localhost'),
-      port: parseInt(optional('SYNC_DB_PORT', '5432'), 10),
+      port: parseInt(optional('SYNC_DB_PORT',
+        optional('SYNC_DB_DRIVER', 'mysql') === 'mysql' ? '3306' : '5432'), 10),
       name: optional('SYNC_DB_NAME', 'qwickservices'),
       user: optional('SYNC_DB_USER', 'cis_readonly'),
       password: optional('SYNC_DB_PASSWORD', ''),

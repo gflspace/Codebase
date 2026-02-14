@@ -1,19 +1,100 @@
 // QwickServices CIS — External Database Connection (Read-Only)
-// Connects to QwickServices' PostgreSQL database for data sync.
+// Dual-driver adapter: MySQL (default for QwickServices/Laravel) with PostgreSQL fallback.
 // Separate pool from CIS's own database — read-only queries only.
 
-import { Pool } from 'pg';
+import { Pool as PgPool } from 'pg';
+import mysql from 'mysql2/promise';
 import { config } from '../config';
 
-let externalPool: Pool | null = null;
+// ─── Unified query result ───────────────────────────────────
 
-export function getExternalPool(): Pool {
-  if (!externalPool) {
+interface ExternalQueryResult {
+  rows: Record<string, unknown>[];
+  rowCount: number;
+}
+
+// ─── Pool state ─────────────────────────────────────────────
+
+let pgPool: PgPool | null = null;
+let mysqlPool: mysql.Pool | null = null;
+
+/**
+ * Convert PostgreSQL-style `$1, $2, …` placeholders to MySQL-style `?`.
+ * Safe because no sync query reuses parameters or has `$N` in string literals.
+ */
+export function convertPlaceholders(sql: string): string {
+  return sql.replace(/\$\d+/g, '?');
+}
+
+// ─── MySQL path ─────────────────────────────────────────────
+
+function getMysqlPool(): mysql.Pool {
+  if (!mysqlPool) {
     if (!config.sync.enabled) {
       throw new Error('Data sync is disabled — set SYNC_ENABLED=true and configure SYNC_DB_* variables');
     }
 
-    externalPool = new Pool({
+    mysqlPool = mysql.createPool({
+      host: config.sync.db.host,
+      port: config.sync.db.port,
+      database: config.sync.db.name,
+      user: config.sync.db.user,
+      password: config.sync.db.password,
+      ssl: config.sync.db.ssl ? { rejectUnauthorized: false } : undefined,
+      connectionLimit: config.sync.db.poolMax,
+      connectTimeout: 5000,
+      waitForConnections: true,
+      enableKeepAlive: true,
+    });
+  }
+  return mysqlPool;
+}
+
+async function mysqlQuery(text: string, params?: unknown[]): Promise<ExternalQueryResult> {
+  const pool = getMysqlPool();
+  const mysqlText = convertPlaceholders(text);
+  const start = Date.now();
+  const [rows] = await pool.query(mysqlText, params);
+  const duration = Date.now() - start;
+
+  const resultRows = Array.isArray(rows) ? rows as Record<string, unknown>[] : [];
+
+  if (config.logLevel === 'debug') {
+    console.log('[Sync:DB:mysql]', { text: mysqlText.substring(0, 80), duration, rows: resultRows.length });
+  }
+
+  return { rows: resultRows, rowCount: resultRows.length };
+}
+
+async function testMysqlConnection(): Promise<boolean> {
+  try {
+    const pool = getMysqlPool();
+    const conn = await pool.getConnection();
+    await conn.ping();
+    conn.release();
+    return true;
+  } catch (error) {
+    console.error('[Sync] MySQL connection test failed:', error);
+    return false;
+  }
+}
+
+async function closeMysqlPool(): Promise<void> {
+  if (mysqlPool) {
+    await mysqlPool.end();
+    mysqlPool = null;
+  }
+}
+
+// ─── PostgreSQL path (fallback) ─────────────────────────────
+
+function getPgPool(): PgPool {
+  if (!pgPool) {
+    if (!config.sync.enabled) {
+      throw new Error('Data sync is disabled — set SYNC_ENABLED=true and configure SYNC_DB_* variables');
+    }
+
+    pgPool = new PgPool({
       host: config.sync.db.host,
       port: config.sync.db.port,
       database: config.sync.db.name,
@@ -27,41 +108,65 @@ export function getExternalPool(): Pool {
       query_timeout: 15000,
     });
 
-    externalPool.on('error', (err) => {
-      console.error('[Sync] External DB pool error:', err.message);
+    pgPool.on('error', (err) => {
+      console.error('[Sync] External PG pool error:', err.message);
     });
   }
-  return externalPool;
+  return pgPool;
 }
 
-export async function externalQuery(text: string, params?: unknown[]) {
-  const pool = getExternalPool();
+async function pgQuery(text: string, params?: unknown[]): Promise<ExternalQueryResult> {
+  const pool = getPgPool();
   const start = Date.now();
   const result = await pool.query(text, params);
   const duration = Date.now() - start;
 
   if (config.logLevel === 'debug') {
-    console.log('[Sync:DB]', { text: text.substring(0, 80), duration, rows: result.rowCount });
+    console.log('[Sync:DB:pg]', { text: text.substring(0, 80), duration, rows: result.rowCount });
   }
-  return result;
+
+  return { rows: result.rows, rowCount: result.rowCount ?? 0 };
 }
 
-export async function testExternalConnection(): Promise<boolean> {
+async function testPgConnection(): Promise<boolean> {
   try {
-    const pool = getExternalPool();
+    const pool = getPgPool();
     const client = await pool.connect();
     await client.query('SELECT 1');
     client.release();
     return true;
   } catch (error) {
-    console.error('[Sync] External database connection test failed:', error);
+    console.error('[Sync] PostgreSQL connection test failed:', error);
     return false;
   }
 }
 
-export async function closeExternalPool(): Promise<void> {
-  if (externalPool) {
-    await externalPool.end();
-    externalPool = null;
+async function closePgPool(): Promise<void> {
+  if (pgPool) {
+    await pgPool.end();
+    pgPool = null;
   }
+}
+
+// ─── Public API (driver-agnostic) ───────────────────────────
+
+export async function externalQuery(text: string, params?: unknown[]): Promise<ExternalQueryResult> {
+  if (config.sync.db.driver === 'mysql') {
+    return mysqlQuery(text, params);
+  }
+  return pgQuery(text, params);
+}
+
+export async function testExternalConnection(): Promise<boolean> {
+  if (config.sync.db.driver === 'mysql') {
+    return testMysqlConnection();
+  }
+  return testPgConnection();
+}
+
+export async function closeExternalPool(): Promise<void> {
+  if (config.sync.db.driver === 'mysql') {
+    return closeMysqlPool();
+  }
+  return closePgPool();
 }

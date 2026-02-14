@@ -105,6 +105,7 @@ router.get('/test-connection', authenticateJWT, requirePermission('sync.manage')
     const connected = await testExternalConnection();
     res.json({
       connected,
+      driver: config.sync.db.driver,
       host: config.sync.db.host,
       port: config.sync.db.port,
       database: config.sync.db.name,

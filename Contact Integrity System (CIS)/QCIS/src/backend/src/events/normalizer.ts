@@ -2,7 +2,10 @@
 // Maps QwickServices Laravel webhook payloads → CIS DomainEvent format.
 // Handles field renaming, event type mapping, and lazy user resolution.
 
-import { EventType, DomainEvent, BookingEventPayload, WalletEventPayload, ProviderEventPayload } from './types';
+import {
+  EventType, DomainEvent, BookingEventPayload, WalletEventPayload, ProviderEventPayload,
+  DisputeEventPayload, RefundEventPayload, ProfileUpdatedPayload,
+} from './types';
 import { generateId, nowISO } from '../shared/utils';
 import { query } from '../database/connection';
 
@@ -38,6 +41,34 @@ const LARAVEL_TO_CIS_EVENT: Record<string, EventType> = {
   // User events
   'user-register': EventType.USER_REGISTERED,
   'user-create': EventType.USER_REGISTERED,
+
+  // Dispute events
+  'dispute.filed': EventType.DISPUTE_OPENED,
+  'dispute-create': EventType.DISPUTE_OPENED,
+  'dispute.resolved': EventType.DISPUTE_RESOLVED,
+  'dispute-resolve': EventType.DISPUTE_RESOLVED,
+
+  // Refund events
+  'payment.refunded': EventType.REFUND_PROCESSED,
+  'refund-process': EventType.REFUND_PROCESSED,
+
+  // Profile events
+  'user.profile_updated': EventType.PROFILE_UPDATED,
+  'profile-update': EventType.PROFILE_UPDATED,
+
+  // Chat events (alternative naming from QwickServices)
+  'chat.message_sent': EventType.MESSAGE_CREATED,
+  'chat.message_edited': EventType.MESSAGE_EDITED,
+
+  // Rating events (alternative naming)
+  'rating.submitted': EventType.RATING_SUBMITTED,
+
+  // Contact change events (alternative naming)
+  'contact.field_changed': EventType.CONTACT_FIELD_CHANGED,
+
+  // Category events
+  'category-create': EventType.CATEGORY_CREATED,
+  'category-update': EventType.CATEGORY_UPDATED,
 };
 
 export function mapEventType(laravelEventType: string): EventType | null {
@@ -77,6 +108,40 @@ export function mapProviderPayload(raw: Record<string, unknown>): ProviderEventP
     provider_id: String(raw.provider_id || raw.id || ''),
     user_id: String(raw.user_id || raw.provider_id || raw.id || ''),
     service_category: raw.service_category as string | undefined,
+    metadata: (raw.metadata as Record<string, unknown>) || undefined,
+  };
+}
+
+export function mapDisputePayload(raw: Record<string, unknown>): DisputeEventPayload {
+  return {
+    dispute_id: String(raw.dispute_id || raw.id || ''),
+    booking_id: String(raw.booking_id || ''),
+    complainant_id: String(raw.complainant_id || raw.user_id || raw.client_id || ''),
+    respondent_id: String(raw.respondent_id || raw.provider_id || ''),
+    dispute_type: String(raw.dispute_type || raw.type || 'other'),
+    reason: String(raw.reason || ''),
+    status: String(raw.status || 'open'),
+  };
+}
+
+export function mapRefundPayload(raw: Record<string, unknown>): RefundEventPayload {
+  return {
+    refund_id: String(raw.refund_id || raw.id || ''),
+    transaction_id: String(raw.transaction_id || raw.payment_id || ''),
+    user_id: String(raw.user_id || raw.customer_id || ''),
+    amount: Number(raw.amount || 0),
+    currency: String(raw.currency || 'USD'),
+    reason: String(raw.reason || ''),
+    status: String(raw.status || 'processed'),
+  };
+}
+
+export function mapProfileUpdatedPayload(raw: Record<string, unknown>): ProfileUpdatedPayload {
+  return {
+    user_id: String(raw.user_id || raw.id || ''),
+    fields_changed: Array.isArray(raw.fields_changed)
+      ? (raw.fields_changed as string[])
+      : (raw.changed_fields ? (raw.changed_fields as string[]) : []),
     metadata: (raw.metadata as Record<string, unknown>) || undefined,
   };
 }
@@ -155,6 +220,33 @@ export async function normalizeWebhookEvent(
     payload = mapped as unknown as Record<string, unknown>;
   } else if (eventType.startsWith('provider.')) {
     const mapped = mapProviderPayload(webhookPayload.payload);
+
+    if (mapped.user_id && !isUUID(mapped.user_id)) {
+      mapped.user_id = await resolveOrCreateUser(mapped.user_id);
+    }
+
+    payload = mapped as unknown as Record<string, unknown>;
+  } else if (eventType.startsWith('dispute.')) {
+    const mapped = mapDisputePayload(webhookPayload.payload);
+
+    if (mapped.complainant_id && !isUUID(mapped.complainant_id)) {
+      mapped.complainant_id = await resolveOrCreateUser(mapped.complainant_id);
+    }
+    if (mapped.respondent_id && !isUUID(mapped.respondent_id)) {
+      mapped.respondent_id = await resolveOrCreateUser(mapped.respondent_id);
+    }
+
+    payload = mapped as unknown as Record<string, unknown>;
+  } else if (eventType === EventType.REFUND_PROCESSED) {
+    const mapped = mapRefundPayload(webhookPayload.payload);
+
+    if (mapped.user_id && !isUUID(mapped.user_id)) {
+      mapped.user_id = await resolveOrCreateUser(mapped.user_id);
+    }
+
+    payload = mapped as unknown as Record<string, unknown>;
+  } else if (eventType === EventType.PROFILE_UPDATED) {
+    const mapped = mapProfileUpdatedPayload(webhookPayload.payload);
 
     if (mapped.user_id && !isUUID(mapped.user_id)) {
       mapped.user_id = await resolveOrCreateUser(mapped.user_id);

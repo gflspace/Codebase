@@ -16,6 +16,7 @@ export interface SyncStatus {
   enabled: boolean;
   running: boolean;
   intervalMs: number;
+  driver: 'mysql' | 'pg';
   tables: Array<{
     source_table: string;
     enabled: boolean;
@@ -50,6 +51,7 @@ export async function getSyncStatus(): Promise<SyncStatus> {
     enabled: config.sync.enabled,
     running: isSyncing,
     intervalMs: config.sync.intervalMs,
+    driver: config.sync.db.driver,
     tables: result.rows.map((r: Record<string, unknown>) => ({
       source_table: String(r.source_table),
       enabled: Boolean(r.enabled),
@@ -222,7 +224,12 @@ export async function startSync(): Promise<boolean> {
     return false;
   }
 
-  console.log(`[Sync] Starting data sync (interval: ${config.sync.intervalMs}ms, batch: ${config.sync.batchSize})`);
+  // When webhooks are active, increase polling interval to fallback mode (gap-fill only)
+  const effectiveInterval = config.sync.webhookPushEnabled
+    ? config.sync.fallbackIntervalMs
+    : config.sync.intervalMs;
+  const mode = config.sync.webhookPushEnabled ? 'fallback/gap-fill' : 'primary';
+  console.log(`[Sync] Starting data sync (mode: ${mode}, interval: ${effectiveInterval}ms, batch: ${config.sync.batchSize})`);
 
   // Run initial sync
   await runSyncCycle();
@@ -230,11 +237,18 @@ export async function startSync(): Promise<boolean> {
   // Set up periodic polling
   syncInterval = setInterval(async () => {
     try {
-      await runSyncCycle();
+      const results = await runSyncCycle();
+      // Log gap-fill metrics when in fallback mode
+      if (config.sync.webhookPushEnabled) {
+        const totalGapFill = results.reduce((sum, r) => sum + r.recordsProcessed, 0);
+        if (totalGapFill > 0) {
+          console.log(`[Sync] Gap-fill: ${totalGapFill} records found by polling that were not delivered via webhook`);
+        }
+      }
     } catch (err) {
       console.error('[Sync] Periodic sync error:', err);
     }
-  }, config.sync.intervalMs);
+  }, effectiveInterval);
 
   return true;
 }
