@@ -220,33 +220,33 @@ describe('V2 Scoring: KYC Component', () => {
   });
 
   it('pending verification reduces by 2', () => {
-    const unverified = computeKYCScore({ verification_status: 'unverified', account_age_days: 0, profile_completeness: 0 });
-    const pending = computeKYCScore({ verification_status: 'pending', account_age_days: 0, profile_completeness: 0 });
-    expect(unverified - pending).toBe(2);
+    // Use established account (age >= 7) to avoid newAccountBoost and isolate verifiedReduction
+    const score = computeKYCScore({ verification_status: 'pending', account_age_days: 10, profile_completeness: 0 });
+    expect(score).toBe(8); // base 10 - verifiedReduction 2 = 8
   });
 
   it('verified reduces by 5', () => {
-    const unverified = computeKYCScore({ verification_status: 'unverified', account_age_days: 0, profile_completeness: 0 });
-    const verified = computeKYCScore({ verification_status: 'verified', account_age_days: 0, profile_completeness: 0 });
-    expect(unverified - verified).toBe(5);
+    const score = computeKYCScore({ verification_status: 'verified', account_age_days: 10, profile_completeness: 0 });
+    expect(score).toBe(5); // base 10 - verifiedReduction 5 = 5
   });
 
   it('account age >180 days reduces by 3', () => {
-    const fresh = computeKYCScore({ verification_status: 'unverified', account_age_days: 5, profile_completeness: 0 });
-    const old = computeKYCScore({ verification_status: 'unverified', account_age_days: 200, profile_completeness: 0 });
-    expect(fresh - old).toBe(3);
+    // Use 'pending' to avoid unverifiedBoost interference
+    const fresh = computeKYCScore({ verification_status: 'pending', account_age_days: 10, profile_completeness: 0 });
+    const old = computeKYCScore({ verification_status: 'pending', account_age_days: 200, profile_completeness: 0 });
+    expect(fresh - old).toBe(3); // ageReduction: 0 vs 3
   });
 
   it('account age 31-180 reduces by 1', () => {
-    const fresh = computeKYCScore({ verification_status: 'unverified', account_age_days: 5, profile_completeness: 0 });
-    const mid = computeKYCScore({ verification_status: 'unverified', account_age_days: 60, profile_completeness: 0 });
-    expect(fresh - mid).toBe(1);
+    const fresh = computeKYCScore({ verification_status: 'pending', account_age_days: 10, profile_completeness: 0 });
+    const mid = computeKYCScore({ verification_status: 'pending', account_age_days: 60, profile_completeness: 0 });
+    expect(fresh - mid).toBe(1); // ageReduction: 0 vs 1
   });
 
   it('profile >0.8 completeness reduces by 2', () => {
-    const incomplete = computeKYCScore({ verification_status: 'unverified', account_age_days: 0, profile_completeness: 0.5 });
-    const complete = computeKYCScore({ verification_status: 'unverified', account_age_days: 0, profile_completeness: 0.9 });
-    expect(incomplete - complete).toBe(2);
+    const incomplete = computeKYCScore({ verification_status: 'pending', account_age_days: 10, profile_completeness: 0.5 });
+    const complete = computeKYCScore({ verification_status: 'pending', account_age_days: 10, profile_completeness: 0.9 });
+    expect(incomplete - complete).toBe(2); // completenessReduction: 0 vs 2
   });
 
   it('never goes below 0', () => {
