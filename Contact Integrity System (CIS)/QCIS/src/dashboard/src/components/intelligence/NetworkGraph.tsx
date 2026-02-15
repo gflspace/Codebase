@@ -339,11 +339,11 @@ export default function NetworkGraph() {
                   <div className="font-medium mb-1">{node.display_name}</div>
                   <div className="text-gray-300">{node.user_type} - <span className={node.status === 'suspended' ? 'text-red-400' : ''}>{node.status}</span></div>
                   <div className="text-gray-300">Risk: {node.trust_score !== null ? `${node.trust_score} (${tierLabel(node.trust_score)})` : 'N/A'}</div>
-                  <div className="text-gray-300">Signals: {(node as Record<string, unknown>).signal_count ?? '-'}</div>
+                  <div className="text-gray-300">Signals: {String((node as unknown as Record<string, unknown>).signal_count ?? '-')}</div>
                   <div className="text-gray-300">Connections: {edgesForNode.length}</div>
                   {totalInteractions > 0 && <div className="text-gray-300">Interactions: {totalInteractions}</div>}
-                  {(node as Record<string, unknown>).enforcement_status && (
-                    <div className="text-amber-400 mt-1">Enforcement: {String((node as Record<string, unknown>).enforcement_status)}</div>
+                  {!!(node as unknown as Record<string, unknown>).enforcement_status && (
+                    <div className="text-amber-400 mt-1">Enforcement: {String((node as unknown as Record<string, unknown>).enforcement_status)}</div>
                   )}
                 </div>
               );

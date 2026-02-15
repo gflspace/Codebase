@@ -39,6 +39,24 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
   return res.json();
 }
 
+// Raw fetch with auth header (for components that need Response directly)
+export async function fetchWithAuth(token: string, path: string): Promise<Response> {
+  const url = path.startsWith('/api') ? `${API_BASE}${path.slice(4)}` : `${API_BASE}${path}`;
+  const res = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cis-auth-expired'));
+    }
+    throw new Error(`HTTP ${res.status}`);
+  }
+  return res;
+}
+
 // Auth
 export const login = (email: string, password: string) =>
   request<{
