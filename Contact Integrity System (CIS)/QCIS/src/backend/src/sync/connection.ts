@@ -148,9 +148,50 @@ async function closePgPool(): Promise<void> {
   }
 }
 
+// ─── SQL Verb Validation Guard ──────────────────────────────
+// Per master_claude.md §11.2 — Only SELECT statements are permitted.
+// Zero tolerance: any non-SELECT verb triggers immediate rejection.
+
+const ALLOWED_SQL_VERBS = new Set(['SELECT']);
+
+/**
+ * Validates that a SQL statement is a read-only SELECT query.
+ * Rejects all DML (INSERT, UPDATE, DELETE), DDL (CREATE, ALTER, DROP),
+ * DCL (GRANT, REVOKE), and procedural (CALL, EXECUTE) statements.
+ * On violation: logs the attempt and throws immediately.
+ */
+export function validateReadOnlyQuery(sql: string): void {
+  const trimmed = sql.trimStart();
+  // Extract the first word (SQL verb) — case-insensitive
+  const match = trimmed.match(/^(\w+)/);
+  const verb = match ? match[1].toUpperCase() : '';
+
+  if (!ALLOWED_SQL_VERBS.has(verb)) {
+    const violation = {
+      timestamp: new Date().toISOString(),
+      verb,
+      query_preview: trimmed.substring(0, 40).replace(/\s+/g, ' '),
+      action: 'BLOCKED — connection will be terminated',
+    };
+    console.error('[SECURITY] Write suppression guard triggered:', JSON.stringify(violation));
+
+    // Terminate the external pool immediately on policy breach
+    closeExternalPool().catch(() => {});
+
+    throw new Error(
+      `READ-ONLY POLICY VIOLATION: SQL verb "${verb}" is not permitted. ` +
+      `Only SELECT queries are allowed on the Qwickservices data source. ` +
+      `Connection terminated. This incident has been logged.`
+    );
+  }
+}
+
 // ─── Public API (driver-agnostic) ───────────────────────────
 
 export async function externalQuery(text: string, params?: unknown[]): Promise<ExternalQueryResult> {
+  // §11.2 — Validate SQL verb before execution (fail-closed)
+  validateReadOnlyQuery(text);
+
   if (config.sync.db.driver === 'mysql') {
     return mysqlQuery(text, params);
   }
