@@ -212,11 +212,12 @@ describe('hard constraints', () => {
 // ─── Reason and metadata preservation ───────────────────────────
 
 describe('metadata preservation', () => {
-  it('preserves reason and reasonCode from base evaluation', () => {
+  it('preserves reason but overrides reasonCode for context-specific actions', () => {
     const base = evaluateTrigger(RiskTier.MEDIUM, NO_HISTORY, []);
     const contextual = evaluateContextualTrigger(RiskTier.MEDIUM, NO_HISTORY, [], 'booking');
     expect(contextual.reason).toBe(base.reason);
-    expect(contextual.reasonCode).toBe(base.reasonCode);
+    // Context override sets context-specific reasonCode so notifications map correctly
+    expect(contextual.reasonCode).toBe('BOOKING_FLAGGED');
     expect(contextual.metadata).toEqual(base.metadata);
   });
 

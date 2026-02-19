@@ -7,6 +7,7 @@ import { query } from '../database/connection';
 import { testExternalConnection, closeExternalPool } from './connection';
 import { TABLE_MAPPINGS, getMappingForTable } from './mappings';
 import { pollTable, updateWatermark, logSyncRun, SyncResult } from './poller';
+import { quickHealthCheck, checkSyncHealth } from './health';
 import { getEventBus } from '../events/bus';
 
 let syncInterval: ReturnType<typeof setInterval> | null = null;
@@ -195,6 +196,19 @@ export async function runSyncCycle(tableName?: string): Promise<SyncResult[]> {
         results.push(failResult);
       }
     }
+    // ─── Health checks ───────────────────────────────────────
+    // Quick in-memory check for immediate logging
+    const quick = quickHealthCheck(results);
+    if (quick.hasIssues) {
+      for (const issue of quick.issues) {
+        console.warn(`[Sync:Health] ${issue.table}: ${issue.anomaly} — ${issue.description}`);
+      }
+    }
+
+    // Full DB-backed health check (async, non-blocking)
+    checkSyncHealth().catch(err => {
+      console.error('[Sync:Health] Background health check failed:', err);
+    });
   } finally {
     isSyncing = false;
   }

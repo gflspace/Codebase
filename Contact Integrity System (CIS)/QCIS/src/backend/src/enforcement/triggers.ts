@@ -238,34 +238,34 @@ function applyContextOverride(
   switch (context) {
     case 'booking':
       if (isRestrictionOrHigher) {
-        return { ...base, action: ActionType.BOOKING_BLOCKED };
+        return { ...base, action: ActionType.BOOKING_BLOCKED, reasonCode: 'BOOKING_BLOCKED' };
       }
       if (base.action === ActionType.HARD_WARNING) {
-        return { ...base, action: ActionType.BOOKING_FLAGGED };
+        return { ...base, action: ActionType.BOOKING_FLAGGED, reasonCode: 'BOOKING_FLAGGED' };
       }
       break;
 
     case 'payment':
       if (isRestrictionOrHigher) {
-        return { ...base, action: ActionType.PAYMENT_BLOCKED };
+        return { ...base, action: ActionType.PAYMENT_BLOCKED, reasonCode: 'PAYMENT_BLOCKED' };
       }
       if (base.action === ActionType.HARD_WARNING) {
-        return { ...base, action: ActionType.PAYMENT_HELD };
+        return { ...base, action: ActionType.PAYMENT_HELD, reasonCode: 'PAYMENT_HELD' };
       }
       break;
 
     case 'provider':
       if (isRestrictionOrHigher) {
-        return { ...base, action: ActionType.PROVIDER_SUSPENDED };
+        return { ...base, action: ActionType.PROVIDER_SUSPENDED, reasonCode: 'PROVIDER_SUSPENDED' };
       }
       if (base.action === ActionType.HARD_WARNING) {
-        return { ...base, action: ActionType.PROVIDER_DEMOTED };
+        return { ...base, action: ActionType.PROVIDER_DEMOTED, reasonCode: 'PROVIDER_DEMOTED' };
       }
       break;
 
     case 'message':
       if (base.action === ActionType.HARD_WARNING && base.metadata?.historyCount && (base.metadata.historyCount as number) > 0) {
-        return { ...base, action: ActionType.MESSAGE_THROTTLED };
+        return { ...base, action: ActionType.MESSAGE_THROTTLED, reasonCode: 'MESSAGE_THROTTLED' };
       }
       break;
   }

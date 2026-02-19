@@ -92,7 +92,7 @@ router.get(
 router.post(
   '/',
   authenticateJWT,
-  requirePermission('overview.view'),
+  requirePermission('transactions.manage'),
   validate(createTransactionSchema),
   async (req: Request, res: Response) => {
     try {
@@ -130,7 +130,7 @@ router.post(
 router.patch(
   '/:id',
   authenticateJWT,
-  requirePermission('overview.view'),
+  requirePermission('transactions.manage'),
   validateParams(uuidParam),
   validate(updateTransactionSchema),
   async (req: Request, res: Response) => {

@@ -158,11 +158,15 @@ function ruleToTriggerEvaluation(rule: DetectionRule, action: RuleAction): Trigg
     ActionType.PROVIDER_SUSPENDED,
   ].includes(actionType);
 
+  // Derive reasonCode from action_type so it maps to USER_MESSAGES in notifications.ts.
+  // Falls back to a descriptive key if the action_type has no dedicated message entry.
+  const reasonCode = actionType.toUpperCase().replace(/-/g, '_');
+
   return {
     action: actionType,
     requiresHumanApproval: requiresApproval,
     reason: `Rule "${rule.name}" triggered: ${rule.description || 'no description'}`,
-    reasonCode: `RULE_${rule.id.slice(0, 8).toUpperCase()}`,
+    reasonCode,
     effectiveDurationHours: actionType === ActionType.TEMPORARY_RESTRICTION ? 24 : null,
     metadata: { ruleId: rule.id, ruleName: rule.name, ruleVersion: rule.version },
   };

@@ -93,7 +93,7 @@ router.get(
 router.post(
   '/',
   authenticateJWT,
-  requirePermission('messages.view'),
+  requirePermission('messages.manage'),
   validate(createMessageSchema),
   async (req: Request, res: Response) => {
     try {

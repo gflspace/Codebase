@@ -26,6 +26,8 @@ export interface TableMapping {
   extractCounterpartyId?: (row: Record<string, unknown>) => string | null;
   /** Optional WHERE clause filter (appended to sync query) */
   extraFilter?: string;
+  /** Optional: expected column types for Phase 2 type-level drift verification */
+  expectedColumnTypes?: Record<string, string[]>;
 }
 
 // ─── Mapping Definitions (Actual QwickServices Schema) ──────

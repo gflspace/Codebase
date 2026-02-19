@@ -92,7 +92,7 @@ router.get(
 router.post(
   '/',
   authenticateJWT,
-  requirePermission('risk.view'),
+  requirePermission('risk.manage'),
   validate(riskSignalSchema),
   async (req: Request, res: Response) => {
     try {

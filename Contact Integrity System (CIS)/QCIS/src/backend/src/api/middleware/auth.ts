@@ -92,7 +92,10 @@ export function verifyHMAC(req: Request, res: Response, next: NextFunction): voi
     .update(`${timestamp}.${body}`)
     .digest('hex');
 
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
     res.status(401).json({ error: 'Invalid HMAC signature' });
     return;
   }

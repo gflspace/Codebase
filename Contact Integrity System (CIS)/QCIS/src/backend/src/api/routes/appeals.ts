@@ -67,7 +67,7 @@ router.get(
 router.post(
   '/',
   authenticateJWT,
-  requirePermission('appeals.view'),
+  requirePermission('appeals.create'),
   validate(createAppealSchema),
   async (req: Request, res: Response) => {
     try {

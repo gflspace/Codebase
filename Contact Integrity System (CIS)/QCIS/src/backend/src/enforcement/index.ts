@@ -60,11 +60,6 @@ export async function processEnforcement(userId: string, context?: EventContext,
   // Step 3: Get enforcement history
   const history = await getEnforcementHistory(userId);
 
-  // Skip if already has active restriction (avoid stacking)
-  if (history.hasActiveRestriction) {
-    return;
-  }
-
   // Step 4: Evaluate admin rules FIRST (rules take precedence over hardcoded triggers)
   const resolvedEventType = eventType || (context ? `${context}.event` : 'general.event');
   let evaluation: TriggerEvaluation | null = null;
@@ -100,6 +95,26 @@ export async function processEnforcement(userId: string, context?: EventContext,
   }
 
   if (!evaluation.action) return;
+
+  // Anti-stacking guard: skip same-severity restrictions, but allow escalations
+  // and non-restriction actions (warnings, admin escalation, context-scoped flags)
+  if (history.hasActiveRestriction) {
+    const isEscalation =
+      evaluation.action === ActionType.ADMIN_ESCALATION ||
+      evaluation.action === ActionType.ACCOUNT_SUSPENSION;
+
+    const isNonRestriction =
+      evaluation.action === ActionType.SOFT_WARNING ||
+      evaluation.action === ActionType.HARD_WARNING ||
+      evaluation.action === ActionType.BOOKING_FLAGGED ||
+      evaluation.action === ActionType.PAYMENT_HELD ||
+      evaluation.action === ActionType.PROVIDER_DEMOTED ||
+      evaluation.action === ActionType.MESSAGE_THROTTLED;
+
+    if (!isEscalation && !isNonRestriction) {
+      return;
+    }
+  }
 
   // Step 5: Get triggering signal IDs
   let triggeringSignalIds: string[] = [];

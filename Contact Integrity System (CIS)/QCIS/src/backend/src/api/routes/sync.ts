@@ -6,6 +6,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { getSyncStatus, getSyncRunHistory, runSyncCycle, toggleTableSync, resetWatermark } from '../../sync';
 import { testExternalConnection } from '../../sync/connection';
+import { checkSyncHealth } from '../../sync/health';
 import { config } from '../../config';
 
 const router = Router();
@@ -114,6 +115,18 @@ router.get('/test-connection', authenticateJWT, requirePermission('sync.manage')
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     res.json({ connected: false, error: message });
+  }
+});
+
+// ─── GET /api/sync/health — Sync health report ───────────────
+
+router.get('/health', authenticateJWT, requirePermission('sync.view'), async (_req: Request, res: Response) => {
+  try {
+    const report = await checkSyncHealth();
+    res.json(report);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ error: 'Failed to get sync health report', details: message });
   }
 });
 

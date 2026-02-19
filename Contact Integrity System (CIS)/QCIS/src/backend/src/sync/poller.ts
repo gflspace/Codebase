@@ -6,6 +6,7 @@ import { query } from '../database/connection';
 import { externalQuery } from './connection';
 import { TableMapping } from './mappings';
 import { transformRow, ensureUsersForRow, detectContactFieldChanges, resolvePayloadUserIds } from './transformer';
+import { validateTableSchema } from './schema-validator';
 import { DomainEvent } from '../events/types';
 import { generateId, nowISO } from '../shared/utils';
 
@@ -105,6 +106,27 @@ export async function pollTable(
   batchSize: number = 100,
 ): Promise<{ events: DomainEvent[]; result: SyncResult }> {
   const startTime = Date.now();
+
+  // §11.7 — Schema drift detection: skip table if schema has drifted
+  const schemaCheck = await validateTableSchema(mapping);
+  if (!schemaCheck.valid) {
+    const durationMs = Date.now() - startTime;
+    return {
+      events: [],
+      result: {
+        sourceTable: mapping.sourceTable,
+        recordsFound: 0,
+        recordsProcessed: 0,
+        recordsFailed: 0,
+        eventsEmitted: 0,
+        watermarkBefore: '',
+        watermarkAfter: '',
+        durationMs,
+        errors: [`Schema drift detected: missing columns [${schemaCheck.missingColumns.join(', ')}]`],
+      },
+    };
+  }
+
   const watermark = await getWatermark(mapping.sourceTable);
   const events: DomainEvent[] = [];
   const errors: string[] = [];

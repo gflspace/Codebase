@@ -301,6 +301,21 @@ async function shutdown(signal: string): Promise<void> {
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
+// ─── Unhandled exception handlers (prevent silent crashes) ───
+
+process.on('unhandledRejection', (reason: unknown) => {
+  const message = reason instanceof Error ? reason.stack || reason.message : String(reason);
+  console.error(`[FATAL] Unhandled promise rejection: ${message}`);
+  // Don't exit — let the process continue serving, but log for monitoring
+});
+
+process.on('uncaughtException', (err: Error) => {
+  console.error(`[FATAL] Uncaught exception: ${err.stack || err.message}`);
+  // For uncaught exceptions, initiate graceful shutdown — the process state
+  // may be corrupted, so continuing is unsafe
+  shutdown('uncaughtException').catch(() => process.exit(1));
+});
+
 start().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);

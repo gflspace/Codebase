@@ -119,7 +119,7 @@ export async function executeAction(
       );
     } else if (evaluation.action === ActionType.PROVIDER_SUSPENDED) {
       await query(
-        "UPDATE users SET status = 'restricted' WHERE id = $1",
+        "UPDATE users SET status = 'suspended' WHERE id = $1",
         [userId]
       );
     }

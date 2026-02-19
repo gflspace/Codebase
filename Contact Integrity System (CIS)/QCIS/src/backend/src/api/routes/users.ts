@@ -89,7 +89,7 @@ router.get(
 router.post(
   '/',
   authenticateJWT,
-  requirePermission('overview.view'),
+  requirePermission('users.manage'),
   validate(createUserSchema),
   async (req: Request, res: Response) => {
     try {
@@ -115,7 +115,7 @@ router.post(
 router.patch(
   '/:id',
   authenticateJWT,
-  requirePermission('overview.view'),
+  requirePermission('users.manage'),
   validateParams(uuidParam),
   validate(updateUserSchema),
   async (req: Request, res: Response) => {

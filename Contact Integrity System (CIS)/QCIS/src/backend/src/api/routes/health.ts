@@ -52,11 +52,11 @@ router.get('/ready', async (_req: Request, res: Response) => {
   try {
     const pool = getPool();
     const migResult = await pool.query(
-      "SELECT name FROM migrations ORDER BY applied_at DESC LIMIT 1"
+      "SELECT filename FROM schema_migrations ORDER BY applied_at DESC LIMIT 1"
     );
     checks.migrations = {
       ok: migResult.rows.length > 0,
-      detail: migResult.rows[0]?.name || 'none',
+      detail: migResult.rows[0]?.filename || 'none',
     };
   } catch {
     checks.migrations = { ok: false, detail: 'migrations table not found' };

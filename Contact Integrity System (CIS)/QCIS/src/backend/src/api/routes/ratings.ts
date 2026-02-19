@@ -12,7 +12,7 @@ const router = Router();
 router.post(
   '/',
   authenticateJWT,
-  requirePermission('overview.view'),
+  requirePermission('ratings.manage'),
   validate(createRatingSchema),
   async (req: Request, res: Response) => {
     try {

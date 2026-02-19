@@ -30,13 +30,10 @@ function verifyWebhookSignature(req: Request, res: Response): boolean {
     .update(body)
     .digest('hex');
 
-  try {
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-      res.status(401).json({ error: 'Invalid webhook signature' });
-      return false;
-    }
-  } catch {
-    // timingSafeEqual throws if buffers are different lengths
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
     res.status(401).json({ error: 'Invalid webhook signature' });
     return false;
   }
