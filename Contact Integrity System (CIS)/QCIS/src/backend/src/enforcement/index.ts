@@ -166,6 +166,7 @@ export function registerEnforcementConsumer(): void {
       EventType.WALLET_TRANSFER,
       EventType.PROVIDER_REGISTERED,
       EventType.PROVIDER_UPDATED,
+      EventType.USER_LOGGED_IN,
       EventType.CONTACT_FIELD_CHANGED,
       EventType.RATING_SUBMITTED,
       // Phase 4 — Dispute, refund & profile events
@@ -175,6 +176,11 @@ export function registerEnforcementConsumer(): void {
       EventType.PROFILE_UPDATED,
     ],
     handler: async (event: DomainEvent) => {
+      // Never enforce on backfill events — historical data should not trigger actions
+      if (event.payload._backfill) {
+        return;
+      }
+
       // Extract userId — check sender_id, user_id, client_id, provider_id (follows scoring pattern)
       const payload = event.payload as Record<string, unknown>;
       const userId = (payload.sender_id as string)

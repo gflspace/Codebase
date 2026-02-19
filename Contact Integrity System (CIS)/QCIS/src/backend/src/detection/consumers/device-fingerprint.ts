@@ -6,7 +6,7 @@ import { query } from '../../database/connection';
 import { generateId } from '../../shared/utils';
 import crypto from 'crypto';
 
-// Extract device info from event metadata
+// Extract device info from event metadata or top-level login fields
 function extractDeviceInfo(payload: Record<string, unknown>): {
   device_hash: string | null;
   ip_address: string | null;
@@ -14,12 +14,22 @@ function extractDeviceInfo(payload: Record<string, unknown>): {
 } {
   const meta = (payload.metadata || {}) as Record<string, unknown>;
   let device_hash = (meta.device_hash as string) || null;
-  const ip_address = (meta.ip_address as string) || null;
+  // Check metadata first, then top-level (login_activities events carry ip/device at top level)
+  const ip_address = (meta.ip_address as string) || (payload.ip_address as string) || null;
   const user_agent = (meta.user_agent as string) || null;
+  // login_activities events carry device_type + browser instead of user_agent
+  const device_type = (payload.device_type as string) || null;
+  const browser = (payload.browser as string) || null;
 
-  // Generate device hash from user_agent + ip if no explicit hash
-  if (!device_hash && user_agent) {
-    device_hash = crypto.createHash('sha256').update(user_agent + (ip_address || '')).digest('hex');
+  // Generate device hash from available device identifiers
+  if (!device_hash) {
+    if (user_agent) {
+      device_hash = crypto.createHash('sha256').update(user_agent + (ip_address || '')).digest('hex');
+    } else if (device_type || browser) {
+      // Login activity events: use device_type + browser + ip as fingerprint
+      const fingerprint = [device_type || 'unknown', browser || 'unknown', ip_address || ''].join('|');
+      device_hash = crypto.createHash('sha256').update(fingerprint).digest('hex');
+    }
   }
 
   return { device_hash, ip_address, user_agent };
@@ -164,6 +174,7 @@ export function registerDeviceFingerprintConsumer(): void {
       EventType.TRANSACTION_INITIATED,
       EventType.PROVIDER_REGISTERED,
       EventType.USER_REGISTERED,
+      EventType.USER_LOGGED_IN,
       EventType.WALLET_DEPOSIT,
     ],
     handler: handleDeviceEvent,

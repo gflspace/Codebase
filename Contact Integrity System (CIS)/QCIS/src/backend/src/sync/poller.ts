@@ -5,7 +5,7 @@
 import { query } from '../database/connection';
 import { externalQuery } from './connection';
 import { TableMapping } from './mappings';
-import { transformRow, ensureUsersForRow } from './transformer';
+import { transformRow, ensureUsersForRow, detectContactFieldChanges } from './transformer';
 import { DomainEvent } from '../events/types';
 import { generateId, nowISO } from '../shared/utils';
 
@@ -133,6 +133,10 @@ export async function pollTable(
       try {
         // Ensure referenced users exist in CIS
         await ensureUsersForRow(row, mapping);
+
+        // Detect contact field changes (emits CONTACT_FIELD_CHANGED events)
+        const contactChangeEvents = await detectContactFieldChanges(row, mapping);
+        events.push(...contactChangeEvents);
 
         // Transform to domain event
         const event = transformRow(row, mapping);

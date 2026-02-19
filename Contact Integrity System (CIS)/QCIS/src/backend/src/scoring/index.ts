@@ -285,6 +285,10 @@ export function registerScoringConsumer(): void {
       EventType.PROVIDER_REGISTERED,
       EventType.PROVIDER_UPDATED,
       EventType.USER_REGISTERED,
+      EventType.USER_LOGGED_IN,
+      // Phase 2C — Contact & rating events
+      EventType.CONTACT_FIELD_CHANGED,
+      EventType.RATING_SUBMITTED,
       // Phase 4 — Dispute, refund & profile events
       EventType.DISPUTE_OPENED,
       EventType.DISPUTE_RESOLVED,
@@ -294,6 +298,12 @@ export function registerScoringConsumer(): void {
     handler: async (event: DomainEvent) => {
       const userId = extractUserId(event.payload);
       if (!userId) return;
+
+      // Skip scoring during initial backfill — detection still runs to build signal history,
+      // but scoring only fires once per user after backfill completes (via final sync cycle).
+      if (event.payload._backfill) {
+        return;
+      }
 
       // Delay slightly to let detection signals persist first
       await new Promise((resolve) => setTimeout(resolve, 500));

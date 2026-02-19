@@ -11,6 +11,16 @@ import { getEventBus } from '../events/bus';
 
 let syncInterval: ReturnType<typeof setInterval> | null = null;
 let isSyncing = false;
+let isBackfilling = false;
+
+/**
+ * Whether the sync service is currently in backfill mode (initial catch-up).
+ * During backfill, events are tagged with _backfill=true so downstream consumers
+ * (scoring, enforcement) can debounce or skip to avoid a processing storm.
+ */
+export function isBackfillMode(): boolean {
+  return isBackfilling;
+}
 
 export interface SyncStatus {
   enabled: boolean;
@@ -114,6 +124,13 @@ export async function runSyncCycle(tableName?: string): Promise<SyncResult[]> {
     for (const mapping of mappings) {
       try {
         const { events, result } = await pollTable(mapping, config.sync.batchSize);
+
+        // Tag backfill events so downstream consumers can debounce/skip
+        if (isBackfilling) {
+          for (const event of events) {
+            event.payload._backfill = true;
+          }
+        }
 
         // Emit events to the CIS event bus
         for (const event of events) {
@@ -231,8 +248,26 @@ export async function startSync(): Promise<boolean> {
   const mode = config.sync.webhookPushEnabled ? 'fallback/gap-fill' : 'primary';
   console.log(`[Sync] Starting data sync (mode: ${mode}, interval: ${effectiveInterval}ms, batch: ${config.sync.batchSize})`);
 
-  // Run initial sync
+  // Detect if any table needs initial backfill (watermark at epoch = never synced)
+  const watermarkCheck = await query(
+    `SELECT COUNT(*) as stale_count FROM sync_watermarks
+     WHERE enabled = true AND last_synced_at <= '1970-01-02T00:00:00Z'`
+  );
+  const needsBackfill = parseInt(String(watermarkCheck.rows[0]?.stale_count || '0'), 10) > 0;
+
+  if (needsBackfill) {
+    isBackfilling = true;
+    console.log('[Sync] Initial backfill detected — events will be tagged with _backfill=true');
+    console.log('[Sync] Scoring will debounce, enforcement will skip during backfill');
+  }
+
+  // Run initial sync (may be backfill)
   await runSyncCycle();
+
+  if (isBackfilling) {
+    isBackfilling = false;
+    console.log('[Sync] Initial backfill complete — switching to normal mode');
+  }
 
   // Set up periodic polling
   syncInterval = setInterval(async () => {

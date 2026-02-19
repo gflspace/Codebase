@@ -109,6 +109,92 @@ export async function ensureCategoryExists(
 }
 
 /**
+ * Detect contact field changes for a user sync row.
+ * Compares incoming QwickServices phone/email against existing CIS record.
+ * Returns CONTACT_FIELD_CHANGED events for any detected changes.
+ */
+export async function detectContactFieldChanges(
+  row: Record<string, unknown>,
+  mapping: TableMapping,
+): Promise<DomainEvent[]> {
+  if (mapping.sourceTable !== 'users') return [];
+
+  const externalUserId = mapping.extractUserId(row);
+  if (!externalUserId) return [];
+
+  // Look up existing CIS user
+  const existing = await query(
+    'SELECT id, email, metadata FROM users WHERE id = $1 OR external_id = $1',
+    [externalUserId]
+  );
+  if (existing.rows.length === 0) return []; // New user, no diff needed
+
+  const cisUser = existing.rows[0];
+  const cisEmail = cisUser.email || null;
+  const cisMeta = (typeof cisUser.metadata === 'string' ? JSON.parse(cisUser.metadata) : cisUser.metadata) || {};
+  const cisPhone = cisMeta.phone || cisMeta.phone_number || null;
+
+  const incomingEmail = row.email ? String(row.email) : null;
+  const incomingPhone = row.phone_number ? String(row.phone_number) : null;
+
+  const events: DomainEvent[] = [];
+  const timestamp = row[mapping.cursorColumn]
+    ? new Date(String(row[mapping.cursorColumn])).toISOString()
+    : nowISO();
+
+  if (incomingEmail && cisEmail && incomingEmail !== cisEmail) {
+    events.push({
+      id: generateId(),
+      type: EventType.CONTACT_FIELD_CHANGED,
+      correlation_id: generateId(),
+      timestamp,
+      version: 1,
+      payload: {
+        user_id: externalUserId,
+        field: 'email',
+        old_value: cisEmail,
+        new_value: incomingEmail,
+        _sync_source: 'data_sync',
+        _source_table: 'users',
+        _source_id: String(row[mapping.primaryKeyColumn]),
+      },
+    });
+  }
+
+  if (incomingPhone && cisPhone && incomingPhone !== cisPhone) {
+    events.push({
+      id: generateId(),
+      type: EventType.CONTACT_FIELD_CHANGED,
+      correlation_id: generateId(),
+      timestamp,
+      version: 1,
+      payload: {
+        user_id: externalUserId,
+        field: 'phone',
+        old_value: cisPhone,
+        new_value: incomingPhone,
+        _sync_source: 'data_sync',
+        _source_table: 'users',
+        _source_id: String(row[mapping.primaryKeyColumn]),
+      },
+    });
+  }
+
+  // Update CIS user email/metadata to reflect the new values
+  if (events.length > 0) {
+    const newMeta = { ...cisMeta };
+    if (incomingPhone) newMeta.phone_number = incomingPhone;
+    await query(
+      `UPDATE users SET email = COALESCE($2, email), metadata = $3, updated_at = NOW()
+       WHERE id = $1 OR external_id = $1`,
+      [externalUserId, incomingEmail, JSON.stringify(newMeta)]
+    );
+  }
+
+  return events;
+}
+
+/**
  * Ensure all users referenced in a row exist in CIS.
  * Also handles category rows by upserting into CIS categories table.
  */

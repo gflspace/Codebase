@@ -17,7 +17,7 @@ vi.mock('../../src/events/bus', () => ({
 
 // ─── Imports (after mocks) ───────────────────────────────────
 
-import { transformRow, ensureUserExists, ensureCategoryExists } from '../../src/sync/transformer';
+import { transformRow, ensureUserExists, ensureCategoryExists, detectContactFieldChanges } from '../../src/sync/transformer';
 import { getMappingForTable, TABLE_MAPPINGS } from '../../src/sync/mappings';
 import { EventType } from '../../src/events/types';
 
@@ -372,5 +372,134 @@ describe('getMappingForTable', () => {
   it('returns undefined for unknown table', () => {
     const mapping = getMappingForTable('unknown_table');
     expect(mapping).toBeUndefined();
+  });
+});
+
+// ─── detectContactFieldChanges ──────────────────────────────
+
+describe('detectContactFieldChanges', () => {
+  it('emits CONTACT_FIELD_CHANGED for email change', async () => {
+    const mapping = getMappingForTable('users')!;
+    // First call: SELECT existing user → has old email
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: '1', email: 'old@test.com', metadata: { phone_number: '+1111' } }],
+    });
+    // Second call: UPDATE user with new contact info
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const row = {
+      id: 1, email: 'new@test.com', phone_number: '+1111',
+      user_type: 'customer', updated_at: '2026-02-16T12:00:00Z',
+    };
+
+    const events = await detectContactFieldChanges(row, mapping);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe(EventType.CONTACT_FIELD_CHANGED);
+    expect(events[0].payload.field).toBe('email');
+    expect(events[0].payload.old_value).toBe('old@test.com');
+    expect(events[0].payload.new_value).toBe('new@test.com');
+  });
+
+  it('emits CONTACT_FIELD_CHANGED for phone change', async () => {
+    const mapping = getMappingForTable('users')!;
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: '1', email: 'test@test.com', metadata: { phone_number: '+1111' } }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const row = {
+      id: 1, email: 'test@test.com', phone_number: '+2222',
+      user_type: 'customer', updated_at: '2026-02-16T12:00:00Z',
+    };
+
+    const events = await detectContactFieldChanges(row, mapping);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe(EventType.CONTACT_FIELD_CHANGED);
+    expect(events[0].payload.field).toBe('phone');
+    expect(events[0].payload.old_value).toBe('+1111');
+    expect(events[0].payload.new_value).toBe('+2222');
+  });
+
+  it('emits two events when both email and phone change', async () => {
+    const mapping = getMappingForTable('users')!;
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: '1', email: 'old@test.com', metadata: { phone_number: '+1111' } }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const row = {
+      id: 1, email: 'new@test.com', phone_number: '+9999',
+      user_type: 'customer', updated_at: '2026-02-16T12:00:00Z',
+    };
+
+    const events = await detectContactFieldChanges(row, mapping);
+
+    expect(events).toHaveLength(2);
+    const fields = events.map(e => e.payload.field);
+    expect(fields).toContain('email');
+    expect(fields).toContain('phone');
+  });
+
+  it('emits nothing when contact fields unchanged', async () => {
+    const mapping = getMappingForTable('users')!;
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: '1', email: 'same@test.com', metadata: { phone_number: '+1111' } }],
+    });
+
+    const row = {
+      id: 1, email: 'same@test.com', phone_number: '+1111',
+      user_type: 'customer', updated_at: '2026-02-16T12:00:00Z',
+    };
+
+    const events = await detectContactFieldChanges(row, mapping);
+
+    expect(events).toHaveLength(0);
+    // Should NOT have called UPDATE
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits nothing for new users (no existing CIS record)', async () => {
+    const mapping = getMappingForTable('users')!;
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const row = {
+      id: 999, email: 'brand-new@test.com', phone_number: '+3333',
+      user_type: 'customer', updated_at: '2026-02-16T12:00:00Z',
+    };
+
+    const events = await detectContactFieldChanges(row, mapping);
+
+    expect(events).toHaveLength(0);
+  });
+
+  it('skips non-users tables', async () => {
+    const mapping = getMappingForTable('bookings')!;
+    const events = await detectContactFieldChanges({ id: 1 }, mapping);
+    expect(events).toHaveLength(0);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Backfill flag propagation ──────────────────────────────
+
+describe('backfill flag', () => {
+  it('transformRow output can be tagged with _backfill flag', () => {
+    const mapping = getMappingForTable('bookings')!;
+    const row = {
+      id: 1, user_id: 3, provider_id: 5, status: 'pending',
+      total_amount: '100', date: '2026-03-01T10:00:00',
+      created_at: '2026-02-13T12:00:00Z', updated_at: '2026-02-13T12:00:00Z',
+    };
+
+    const event = transformRow(row, mapping);
+
+    // Simulate sync service tagging during backfill
+    event.payload._backfill = true;
+
+    expect(event.payload._backfill).toBe(true);
+    expect(event.payload._sync_source).toBe('data_sync');
+    expect(event.type).toBe(EventType.BOOKING_CREATED);
   });
 });
