@@ -17,7 +17,7 @@ vi.mock('../../src/events/bus', () => ({
 
 // ─── Imports (after mocks) ───────────────────────────────────
 
-import { transformRow, ensureUserExists, ensureCategoryExists, detectContactFieldChanges } from '../../src/sync/transformer';
+import { transformRow, ensureUserExists, ensureCategoryExists, ensureUsersForRow, resolvePayloadUserIds, detectContactFieldChanges } from '../../src/sync/transformer';
 import { getMappingForTable, TABLE_MAPPINGS } from '../../src/sync/mappings';
 import { EventType } from '../../src/events/types';
 
@@ -249,31 +249,125 @@ describe('transformRow', () => {
 // ─── ensureUserExists ────────────────────────────────────────
 
 describe('ensureUserExists', () => {
-  it('creates user when not found', async () => {
+  it('creates user with UUID when external ID not found', async () => {
+    // 1st call: SELECT by external_id → not found
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'user-new' }] });
+    // 2nd call: INSERT with generated UUID
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // 3rd call: re-query to get the actual ID (race condition guard)
+    const generatedUuid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: generatedUuid }] });
 
-    const userId = await ensureUserExists('user-new');
+    const userId = await ensureUserExists('42');
 
-    expect(userId).toBe('user-new');
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(userId).toBe(generatedUuid);
+    expect(mockQuery).toHaveBeenCalledTimes(3);
 
+    // Verify lookup is by external_id only (not "id = $1 OR external_id = $1")
+    const selectCall = mockQuery.mock.calls[0];
+    expect(selectCall[0]).toContain('external_id = $1');
+    expect(selectCall[0]).not.toContain('id = $1 OR');
+    expect(selectCall[1]).toEqual(['42']);
+
+    // Verify insert uses generated UUID for id, external ID for external_id
     const insertCall = mockQuery.mock.calls[1];
     expect(insertCall[0]).toContain('INSERT INTO users');
-    expect(insertCall[1][0]).toBe('user-new');
-    expect(insertCall[1][1]).toBe('user-new');
+    expect(insertCall[1][1]).toBe('42'); // external_id param
+    // First param should be a UUID (not "42")
+    expect(insertCall[1][0]).not.toBe('42');
   });
 
-  it('returns existing user ID when found', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'user-existing' }] });
+  it('returns existing CIS UUID when external ID already provisioned', async () => {
+    const existingUuid = '11111111-2222-3333-4444-555555555555';
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: existingUuid }] });
 
-    const userId = await ensureUserExists('user-existing');
+    const userId = await ensureUserExists('42');
 
-    expect(userId).toBe('user-existing');
+    expect(userId).toBe(existingUuid);
     expect(mockQuery).toHaveBeenCalledTimes(1);
 
-    const queries = mockQuery.mock.calls.map(c => c[0]);
-    expect(queries.every(q => !q.includes('INSERT'))).toBe(true);
+    // Verify lookup by external_id only
+    const selectCall = mockQuery.mock.calls[0];
+    expect(selectCall[0]).toContain('external_id = $1');
+    expect(selectCall[1]).toEqual(['42']);
+  });
+});
+
+// ─── resolvePayloadUserIds ──────────────────────────────────
+
+describe('resolvePayloadUserIds', () => {
+  it('replaces QwickServices bigint IDs with CIS UUIDs in payload', () => {
+    const payload: Record<string, unknown> = {
+      user_id: '42',
+      client_id: '42',
+      provider_id: '99',
+      booking_id: '7', // not a user ID field — should not be touched
+      amount: 150,
+    };
+
+    const idMap = new Map([
+      ['42', 'uuid-for-42'],
+      ['99', 'uuid-for-99'],
+    ]);
+
+    resolvePayloadUserIds(payload, idMap);
+
+    expect(payload.user_id).toBe('uuid-for-42');
+    expect(payload.client_id).toBe('uuid-for-42');
+    expect(payload.provider_id).toBe('uuid-for-99');
+    expect(payload.booking_id).toBe('7'); // unchanged
+    expect(payload.amount).toBe(150); // unchanged
+  });
+
+  it('does not touch fields not in the idMap', () => {
+    const payload: Record<string, unknown> = {
+      user_id: '42',
+      sender_id: 'system', // "system" not in map
+    };
+
+    const idMap = new Map([['42', 'uuid-for-42']]);
+
+    resolvePayloadUserIds(payload, idMap);
+
+    expect(payload.user_id).toBe('uuid-for-42');
+    expect(payload.sender_id).toBe('system'); // unchanged
+  });
+
+  it('handles empty idMap gracefully', () => {
+    const payload: Record<string, unknown> = { user_id: '42' };
+    resolvePayloadUserIds(payload, new Map());
+    expect(payload.user_id).toBe('42'); // unchanged
+  });
+});
+
+// ─── ensureUsersForRow ──────────────────────────────────────
+
+describe('ensureUsersForRow', () => {
+  it('returns idMap with user and counterparty UUIDs for bookings', async () => {
+    const mapping = getMappingForTable('bookings')!;
+    // ensureUserExists for user_id (client)
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'uuid-client' }] });
+    // ensureUserExists for provider_id (counterparty)
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'uuid-provider' }] });
+
+    const row = { id: 1, user_id: 42, provider_id: 99, status: 'pending' };
+    const idMap = await ensureUsersForRow(row, mapping);
+
+    expect(idMap.get('42')).toBe('uuid-client');
+    expect(idMap.get('99')).toBe('uuid-provider');
+    expect(idMap.size).toBe(2);
+  });
+
+  it('returns empty idMap for category rows', async () => {
+    const mapping = getMappingForTable('categories')!;
+    // ensureCategoryExists calls: SELECT + INSERT
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const row = { id: 5, name: 'Plumbing', status: 1, created_at: '2026-01-01', updated_at: '2026-01-01' };
+    const idMap = await ensureUsersForRow(row, mapping);
+
+    expect(idMap.size).toBe(0);
   });
 });
 

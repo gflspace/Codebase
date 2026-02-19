@@ -5,7 +5,7 @@
 import { query } from '../database/connection';
 import { externalQuery } from './connection';
 import { TableMapping } from './mappings';
-import { transformRow, ensureUsersForRow, detectContactFieldChanges } from './transformer';
+import { transformRow, ensureUsersForRow, detectContactFieldChanges, resolvePayloadUserIds } from './transformer';
 import { DomainEvent } from '../events/types';
 import { generateId, nowISO } from '../shared/utils';
 
@@ -131,15 +131,19 @@ export async function pollTable(
 
     for (const row of rows.rows) {
       try {
-        // Ensure referenced users exist in CIS
-        await ensureUsersForRow(row, mapping);
+        // Ensure referenced users exist in CIS; returns {externalBigint → cisUuid} map
+        const idMap = await ensureUsersForRow(row, mapping);
 
         // Detect contact field changes (emits CONTACT_FIELD_CHANGED events)
         const contactChangeEvents = await detectContactFieldChanges(row, mapping);
+        for (const evt of contactChangeEvents) {
+          resolvePayloadUserIds(evt.payload as Record<string, unknown>, idMap);
+        }
         events.push(...contactChangeEvents);
 
-        // Transform to domain event
+        // Transform to domain event, then resolve QwickServices bigint IDs → CIS UUIDs
         const event = transformRow(row, mapping);
+        resolvePayloadUserIds(event.payload as Record<string, unknown>, idMap);
         events.push(event);
         recordsProcessed++;
 

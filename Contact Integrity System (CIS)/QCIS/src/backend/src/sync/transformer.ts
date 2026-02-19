@@ -34,12 +34,14 @@ export function transformRow(row: Record<string, unknown>, mapping: TableMapping
 /**
  * Ensure user exists in CIS database.
  * Uses lazy registration: if user doesn't exist, create with defaults.
- * Returns the CIS user ID (which is the external QwickServices user ID).
+ * QwickServices uses bigint IDs; CIS uses UUIDs. The QwickServices ID is
+ * stored in external_id (VARCHAR), and a proper UUID is generated for id.
+ * Returns the CIS UUID.
  */
 export async function ensureUserExists(externalUserId: string): Promise<string> {
-  // Check if user already exists
+  // Lookup by external_id only — QwickServices bigints are not valid UUIDs
   const existing = await query(
-    'SELECT id FROM users WHERE id = $1 OR external_id = $1',
+    'SELECT id FROM users WHERE external_id = $1 LIMIT 1',
     [externalUserId]
   );
 
@@ -47,28 +49,21 @@ export async function ensureUserExists(externalUserId: string): Promise<string> 
     return existing.rows[0].id;
   }
 
-  // Auto-provision user with defaults
-  const userId = externalUserId; // Use QwickServices ID directly as CIS ID
-  try {
-    await query(
-      `INSERT INTO users (id, external_id, trust_score, status, verification_status, created_at, updated_at)
-       VALUES ($1, $2, 50.00, 'active', 'unverified', NOW(), NOW())
-       ON CONFLICT (id) DO NOTHING`,
-      [userId, externalUserId]
-    );
-  } catch (err) {
-    // Race condition or ID format mismatch — use generated ID
-    const newId = generateId();
-    await query(
-      `INSERT INTO users (id, external_id, trust_score, status, verification_status, created_at, updated_at)
-       VALUES ($1, $2, 50.00, 'active', 'unverified', NOW(), NOW())
-       ON CONFLICT (external_id) DO NOTHING`,
-      [newId, externalUserId]
-    );
-    return newId;
-  }
+  // Auto-provision with generated UUID
+  const cisId = generateId();
+  await query(
+    `INSERT INTO users (id, external_id, trust_score, status, verification_status, created_at, updated_at)
+     VALUES ($1, $2, 50.00, 'active', 'unverified', NOW(), NOW())
+     ON CONFLICT (external_id) DO NOTHING`,
+    [cisId, externalUserId]
+  );
 
-  return userId;
+  // Handle race condition — re-query to get the winning insert's ID
+  const recheck = await query(
+    'SELECT id FROM users WHERE external_id = $1 LIMIT 1',
+    [externalUserId]
+  );
+  return recheck.rows.length > 0 ? recheck.rows[0].id : cisId;
 }
 
 /**
@@ -122,9 +117,9 @@ export async function detectContactFieldChanges(
   const externalUserId = mapping.extractUserId(row);
   if (!externalUserId) return [];
 
-  // Look up existing CIS user
+  // Look up existing CIS user by external_id (QwickServices bigints are not valid UUIDs)
   const existing = await query(
-    'SELECT id, email, metadata FROM users WHERE id = $1 OR external_id = $1',
+    'SELECT id, email, metadata FROM users WHERE external_id = $1 LIMIT 1',
     [externalUserId]
   );
   if (existing.rows.length === 0) return []; // New user, no diff needed
@@ -186,7 +181,7 @@ export async function detectContactFieldChanges(
     if (incomingPhone) newMeta.phone_number = incomingPhone;
     await query(
       `UPDATE users SET email = COALESCE($2, email), metadata = $3, updated_at = NOW()
-       WHERE id = $1 OR external_id = $1`,
+       WHERE external_id = $1`,
       [externalUserId, incomingEmail, JSON.stringify(newMeta)]
     );
   }
@@ -195,10 +190,41 @@ export async function detectContactFieldChanges(
 }
 
 /**
+ * User ID fields in event payloads that should be resolved from
+ * QwickServices bigints to CIS UUIDs.
+ */
+const USER_ID_FIELDS = [
+  'user_id', 'client_id', 'provider_id', 'sender_id', 'receiver_id',
+  'respondent_id', 'complainant_id', 'customer_id',
+];
+
+/**
+ * Replace QwickServices external IDs with CIS UUIDs in an event payload.
+ * Only replaces fields that exist in the idMap (provisioned users).
+ */
+export function resolvePayloadUserIds(
+  payload: Record<string, unknown>,
+  idMap: Map<string, string>,
+): void {
+  for (const field of USER_ID_FIELDS) {
+    const externalId = payload[field] as string | undefined;
+    if (externalId && idMap.has(externalId)) {
+      payload[field] = idMap.get(externalId);
+    }
+  }
+}
+
+/**
  * Ensure all users referenced in a row exist in CIS.
  * Also handles category rows by upserting into CIS categories table.
+ * Returns a map of { QwickServices external ID → CIS UUID } for ID resolution.
  */
-export async function ensureUsersForRow(row: Record<string, unknown>, mapping: TableMapping): Promise<void> {
+export async function ensureUsersForRow(
+  row: Record<string, unknown>,
+  mapping: TableMapping,
+): Promise<Map<string, string>> {
+  const idMap = new Map<string, string>();
+
   // Handle category rows specially — no user provisioning needed
   if (mapping.sourceTable === 'categories') {
     const categoryId = row[mapping.primaryKeyColumn];
@@ -210,18 +236,22 @@ export async function ensureUsersForRow(row: Record<string, unknown>, mapping: T
         row.status ? String(row.status) : 'active',
       );
     }
-    return;
+    return idMap;
   }
 
   const userId = mapping.extractUserId(row);
   if (userId) {
-    await ensureUserExists(userId);
+    const cisId = await ensureUserExists(userId);
+    idMap.set(userId, cisId);
   }
 
   if (mapping.extractCounterpartyId) {
     const counterpartyId = mapping.extractCounterpartyId(row);
     if (counterpartyId) {
-      await ensureUserExists(counterpartyId);
+      const cisId = await ensureUserExists(counterpartyId);
+      idMap.set(counterpartyId, cisId);
     }
   }
+
+  return idMap;
 }
