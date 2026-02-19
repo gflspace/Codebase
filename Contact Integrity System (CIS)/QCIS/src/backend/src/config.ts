@@ -111,7 +111,7 @@ export const config = {
       host: optional('SYNC_DB_HOST', 'localhost'),
       port: parseInt(optional('SYNC_DB_PORT',
         optional('SYNC_DB_DRIVER', 'mysql') === 'mysql' ? '3306' : '5432'), 10),
-      name: optional('SYNC_DB_NAME', 'qwickservices'),
+      name: optional('SYNC_DB_NAME', 'quickservices-db'),
       user: optional('SYNC_DB_USER', 'cis_readonly'),
       password: optional('SYNC_DB_PASSWORD', ''),
       ssl: optional('SYNC_DB_SSL', 'false') === 'true',

@@ -1,4 +1,5 @@
 // QwickServices CIS — Sync Transformer Unit Tests
+// Aligned to ACTUAL QwickServices MySQL schema (verified 2026-02-16).
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -30,15 +31,15 @@ describe('transformRow', () => {
   it('converts a booking row to BOOKING_CREATED event', () => {
     const mapping = getMappingForTable('bookings')!;
     const row = {
-      booking_id: 'booking-1',
+      id: 1,
       booking_uid: 'BK-001',
-      user_id: 'user-1',
-      provider_id: 'provider-1',
-      service_id: 'svc-1',
-      category_id: 'cat-1',
+      user_id: 3,
+      provider_id: 5,
+      service_id: 10,
+      category_id: 2,
       status: 'pending',
       total_amount: '150.00',
-      scheduled_time: '2026-02-15T10:00:00Z',
+      date: '2026-02-15T10:00:00',
       created_at: '2026-02-13T12:00:00Z',
       updated_at: '2026-02-13T12:00:00Z',
     };
@@ -46,10 +47,10 @@ describe('transformRow', () => {
     const event = transformRow(row, mapping);
 
     expect(event.type).toBe(EventType.BOOKING_CREATED);
-    expect(event.payload.booking_id).toBe('booking-1');
-    expect(event.payload.client_id).toBe('user-1');
-    expect(event.payload.provider_id).toBe('provider-1');
-    expect(event.payload.category_id).toBe('cat-1');
+    expect(event.payload.booking_id).toBe('1');
+    expect(event.payload.client_id).toBe('3');
+    expect(event.payload.provider_id).toBe('5');
+    expect(event.payload.category_id).toBe('2');
     expect(event.payload.amount).toBe(150);
     expect(event.payload.status).toBe('pending');
   });
@@ -57,12 +58,12 @@ describe('transformRow', () => {
   it('converts a cancelled booking to BOOKING_CANCELLED event', () => {
     const mapping = getMappingForTable('bookings')!;
     const row = {
-      booking_id: 'booking-2',
-      user_id: 'user-2',
-      provider_id: 'provider-2',
+      id: 2,
+      user_id: 4,
+      provider_id: 6,
       status: 'cancelled',
       total_amount: '200.00',
-      scheduled_time: '2026-02-20T14:00:00Z',
+      date: '2026-02-20T14:00:00',
       created_at: '2026-02-13T09:00:00Z',
       updated_at: '2026-02-14T10:00:00Z',
     };
@@ -73,144 +74,145 @@ describe('transformRow', () => {
     expect(event.payload.status).toBe('cancelled');
   });
 
-  it('converts a transaction row to TRANSACTION_INITIATED event', () => {
-    const mapping = getMappingForTable('transactions')!;
+  it('converts a payment row to TRANSACTION_INITIATED event', () => {
+    const mapping = getMappingForTable('payments')!;
     const row = {
-      transaction_id: 'txn-1',
-      booking_id: 'booking-1',
-      payer_id: 'user-1',
-      payee_id: 'provider-1',
-      amount: '150.00',
-      payment_method: 'credit_card',
-      commission_amount: '15.00',
-      status: 'pending',
+      id: 1,
+      booking_id: 2,
+      user_id: 3,
+      total_amount: 150.00,
+      payment_type: 'credit_card',
+      payment_status: 'pending',
+      transaction_fee: 3.50,
       created_at: '2026-02-13T12:00:00Z',
     };
 
     const event = transformRow(row, mapping);
 
     expect(event.type).toBe(EventType.TRANSACTION_INITIATED);
-    expect(event.payload.transaction_id).toBe('txn-1');
-    expect(event.payload.user_id).toBe('user-1');
-    expect(event.payload.counterparty_id).toBe('provider-1');
+    expect(event.payload.transaction_id).toBe('1');
+    expect(event.payload.user_id).toBe('3');
     expect(event.payload.amount).toBe(150);
     expect(event.payload.payment_method).toBe('credit_card');
-    expect(event.payload.commission_amount).toBe(15);
+    expect(event.payload.transaction_fee).toBe(3.5);
     expect(event.payload.status).toBe('pending');
   });
 
-  it('converts a completed transaction to TRANSACTION_COMPLETED event', () => {
-    const mapping = getMappingForTable('transactions')!;
+  it('converts a completed payment to TRANSACTION_COMPLETED event', () => {
+    const mapping = getMappingForTable('payments')!;
     const row = {
-      transaction_id: 'txn-2',
-      payer_id: 'user-2',
-      payee_id: 'provider-2',
-      amount: '200.00',
-      payment_method: 'bank_transfer',
-      status: 'completed',
+      id: 2,
+      user_id: 4,
+      total_amount: 200.00,
+      payment_type: 'bank_transfer',
+      payment_status: 'paid',
       created_at: '2026-02-13T12:00:00Z',
     };
 
     const event = transformRow(row, mapping);
 
     expect(event.type).toBe(EventType.TRANSACTION_COMPLETED);
-    expect(event.payload.status).toBe('completed');
+    expect(event.payload.status).toBe('paid');
   });
 
-  it('converts a message row to MESSAGE_CREATED event', () => {
-    const mapping = getMappingForTable('messages')!;
+  it('converts a notification row to MESSAGE_CREATED event', () => {
+    const mapping = getMappingForTable('notifications')!;
     const row = {
-      message_id: 'msg-1',
-      booking_id: 'booking-1',
-      sender_id: 'user-1',
-      receiver_id: 'user-2',
-      message_type: 'text',
-      timestamp: '2026-02-13T12:00:00Z',
+      id: 'abc-123-def',
+      type: 'App\\Notifications\\BookingCreated',
+      notifiable_type: 'App\\Models\\User',
+      notifiable_id: 5,
+      data: '{"booking_id":1}',
+      read_at: null,
+      created_at: '2026-02-13T12:00:00Z',
     };
 
     const event = transformRow(row, mapping);
 
     expect(event.type).toBe(EventType.MESSAGE_CREATED);
-    expect(event.payload.message_id).toBe('msg-1');
-    expect(event.payload.sender_id).toBe('user-1');
-    expect(event.payload.receiver_id).toBe('user-2');
-    expect(event.payload.booking_id).toBe('booking-1');
-    expect(event.payload.message_type).toBe('text');
+    expect(event.payload.message_id).toBe('abc-123-def');
+    expect(event.payload.receiver_id).toBe('5');
+    expect(event.payload.sender_id).toBe('system');
+    expect(event.payload.message_type).toBe('notification');
   });
 
   it('converts a rating row to RATING_SUBMITTED event', () => {
     const mapping = getMappingForTable('ratings')!;
     const row = {
-      id: 'rating-1',
-      reviewer_id: 'user-1',
-      reviewee_id: 'provider-1',
-      booking_id: 'booking-1',
-      rating: '5',
-      comment: 'Great service!',
+      id: 1,
+      customer_id: 3,
+      provider_id: 5,
+      booking_id: 2,
+      rating: 5,
+      review: 'Great service!',
+      status: 1,
       created_at: '2026-02-13T12:00:00Z',
     };
 
     const event = transformRow(row, mapping);
 
     expect(event.type).toBe(EventType.RATING_SUBMITTED);
-    expect(event.payload.rating_id).toBe('rating-1');
-    expect(event.payload.client_id).toBe('user-1');
-    expect(event.payload.provider_id).toBe('provider-1');
-    expect(event.payload.booking_id).toBe('booking-1');
+    expect(event.payload.rating_id).toBe('1');
+    expect(event.payload.client_id).toBe('3');
+    expect(event.payload.provider_id).toBe('5');
+    expect(event.payload.booking_id).toBe('2');
     expect(event.payload.score).toBe(5);
     expect(event.payload.comment).toBe('Great service!');
   });
 
-  it('converts a provider row to PROVIDER_REGISTERED event (new)', () => {
-    const mapping = getMappingForTable('providers')!;
+  it('converts a user row with provider type to PROVIDER_REGISTERED event (new)', () => {
+    const mapping = getMappingForTable('users')!;
+    const now = '2026-02-13T12:00:00Z';
     const row = {
-      provider_id: 'provider-1',
-      status: 'active',
-      is_kyc_verified: 1,
+      id: 10,
+      first_name: 'Jane',
+      last_name: 'Provider',
+      email: 'jane@provider.com',
+      phone_number: '+1555000',
+      user_type: 'provider',
       is_active: 1,
-      total_services: '5',
-      completion_rate: '0.95',
-      rejection_rate: '0.02',
-      total_earnings: '5000',
+      is_email_verified: 1,
+      is_phone_verified: 1,
+      is_kyc_verified: 1,
       wallet_balance: '200',
-      created_at: '2026-02-13T12:00:00Z',
-      updated_at: '2026-02-13T12:00:00Z', // Same as created_at
+      created_at: now,
+      updated_at: now,
     };
 
     const event = transformRow(row, mapping);
 
     expect(event.type).toBe(EventType.PROVIDER_REGISTERED);
-    expect(event.payload.provider_id).toBe('provider-1');
-    expect(event.payload.user_id).toBe('provider-1');
+    expect(event.payload.user_id).toBe('10');
+    expect(event.payload.user_type).toBe('provider');
     const meta = event.payload.metadata as Record<string, unknown>;
-    expect(meta.is_kyc_verified).toBe(1);
-    expect(meta.completion_rate).toBe(0.95);
+    expect(meta.is_kyc_verified).toBe(true);
+    expect(meta.wallet_balance).toBe(200);
   });
 
-  it('converts a provider row to PROVIDER_UPDATED event (updated)', () => {
-    const mapping = getMappingForTable('providers')!;
+  it('converts a user row with provider type to PROVIDER_UPDATED event (updated)', () => {
+    const mapping = getMappingForTable('users')!;
     const row = {
-      provider_id: 'provider-2',
-      status: 'active',
-      is_kyc_verified: 1,
+      id: 11,
+      user_type: 'provider',
+      is_active: 1,
       created_at: '2026-02-13T12:00:00Z',
-      updated_at: '2026-02-13T14:00:00Z', // 2 hours later
+      updated_at: '2026-02-13T14:00:00Z',
     };
 
     const event = transformRow(row, mapping);
 
     expect(event.type).toBe(EventType.PROVIDER_UPDATED);
-    expect(event.payload.provider_id).toBe('provider-2');
+    expect(event.payload.user_id).toBe('11');
   });
 
   it('converts a category row to CATEGORY_CREATED event', () => {
     const mapping = getMappingForTable('categories')!;
     const now = '2026-02-14T12:00:00Z';
     const row = {
-      category_id: 'cat-1',
+      id: 1,
       name: 'Plumbing',
-      parent_id: null,
-      status: 'active',
+      is_featured: 0,
+      status: 1,
       created_at: now,
       updated_at: now,
     };
@@ -218,7 +220,7 @@ describe('transformRow', () => {
     const event = transformRow(row, mapping);
 
     expect(event.type).toBe(EventType.CATEGORY_CREATED);
-    expect(event.payload.category_id).toBe('cat-1');
+    expect(event.payload.category_id).toBe('1');
     expect(event.payload.name).toBe('Plumbing');
     expect(event.payload.status).toBe('active');
   });
@@ -226,12 +228,12 @@ describe('transformRow', () => {
   it('includes _sync_source metadata in payload', () => {
     const mapping = getMappingForTable('bookings')!;
     const row = {
-      booking_id: 'booking-3',
-      user_id: 'user-7',
-      provider_id: 'provider-3',
+      id: 3,
+      user_id: 7,
+      provider_id: 8,
       status: 'pending',
       total_amount: '300.00',
-      scheduled_time: '2026-02-16T09:00:00Z',
+      date: '2026-02-16T09:00:00',
       created_at: '2026-02-13T12:00:00Z',
       updated_at: '2026-02-13T12:00:00Z',
     };
@@ -240,7 +242,7 @@ describe('transformRow', () => {
 
     expect(event.payload._sync_source).toBe('data_sync');
     expect(event.payload._source_table).toBe('bookings');
-    expect(event.payload._source_id).toBe('booking-3');
+    expect(event.payload._source_id).toBe('3');
   });
 });
 
@@ -248,9 +250,7 @@ describe('transformRow', () => {
 
 describe('ensureUserExists', () => {
   it('creates user when not found', async () => {
-    // User does not exist
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    // INSERT succeeds (no conflict)
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 'user-new' }] });
 
     const userId = await ensureUserExists('user-new');
@@ -258,15 +258,13 @@ describe('ensureUserExists', () => {
     expect(userId).toBe('user-new');
     expect(mockQuery).toHaveBeenCalledTimes(2);
 
-    // Verify INSERT was called
     const insertCall = mockQuery.mock.calls[1];
     expect(insertCall[0]).toContain('INSERT INTO users');
-    expect(insertCall[1][0]).toBe('user-new'); // id
-    expect(insertCall[1][1]).toBe('user-new'); // external_id
+    expect(insertCall[1][0]).toBe('user-new');
+    expect(insertCall[1][1]).toBe('user-new');
   });
 
   it('returns existing user ID when found', async () => {
-    // User already exists
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 'user-existing' }] });
 
     const userId = await ensureUserExists('user-existing');
@@ -274,7 +272,6 @@ describe('ensureUserExists', () => {
     expect(userId).toBe('user-existing');
     expect(mockQuery).toHaveBeenCalledTimes(1);
 
-    // Verify no INSERT was called
     const queries = mockQuery.mock.calls.map(c => c[0]);
     expect(queries.every(q => !q.includes('INSERT'))).toBe(true);
   });
@@ -284,9 +281,7 @@ describe('ensureUserExists', () => {
 
 describe('ensureCategoryExists', () => {
   it('creates category when not found', async () => {
-    // Category does not exist
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    // INSERT succeeds
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 'cat-uuid' }] });
 
     const id = await ensureCategoryExists('ext-cat-1', 'Plumbing', null, 'active');
@@ -298,9 +293,7 @@ describe('ensureCategoryExists', () => {
   });
 
   it('updates existing category', async () => {
-    // Category exists
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 'existing-cat-uuid' }] });
-    // UPDATE succeeds
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const id = await ensureCategoryExists('ext-cat-1', 'Updated Name', null, 'active');
@@ -320,32 +313,36 @@ describe('getMappingForTable', () => {
     expect(mapping).toBeDefined();
     expect(mapping?.sourceTable).toBe('bookings');
     expect(mapping?.cursorColumn).toBe('updated_at');
-    expect(mapping?.primaryKeyColumn).toBe('booking_id');
+    expect(mapping?.primaryKeyColumn).toBe('id');
   });
 
-  it('returns correct mapping for transactions (was payments)', () => {
-    const mapping = getMappingForTable('transactions');
+  it('returns correct mapping for payments (actual table name)', () => {
+    const mapping = getMappingForTable('payments');
     expect(mapping).toBeDefined();
-    expect(mapping?.sourceTable).toBe('transactions');
-    expect(mapping?.primaryKeyColumn).toBe('transaction_id');
+    expect(mapping?.sourceTable).toBe('payments');
+    expect(mapping?.primaryKeyColumn).toBe('id');
   });
 
-  it('returns undefined for old payments table name', () => {
-    expect(getMappingForTable('payments')).toBeUndefined();
+  it('returns undefined for old "transactions" blueprint name', () => {
+    expect(getMappingForTable('transactions')).toBeUndefined();
   });
 
-  it('returns correct mapping for messages', () => {
-    const mapping = getMappingForTable('messages');
+  it('returns correct mapping for notifications (replaces messages)', () => {
+    const mapping = getMappingForTable('notifications');
     expect(mapping).toBeDefined();
-    expect(mapping?.sourceTable).toBe('messages');
-    expect(mapping?.cursorColumn).toBe('timestamp');
+    expect(mapping?.sourceTable).toBe('notifications');
+    expect(mapping?.cursorColumn).toBe('created_at');
+  });
+
+  it('returns undefined for old "messages" blueprint name', () => {
+    expect(getMappingForTable('messages')).toBeUndefined();
   });
 
   it('returns correct mapping for categories', () => {
     const mapping = getMappingForTable('categories');
     expect(mapping).toBeDefined();
     expect(mapping?.sourceTable).toBe('categories');
-    expect(mapping?.primaryKeyColumn).toBe('category_id');
+    expect(mapping?.primaryKeyColumn).toBe('id');
   });
 
   it('returns correct mapping for ratings', () => {
@@ -355,11 +352,21 @@ describe('getMappingForTable', () => {
     expect(mapping?.cursorColumn).toBe('created_at');
   });
 
-  it('returns correct mapping for providers', () => {
-    const mapping = getMappingForTable('providers');
+  it('returns undefined for old "providers" blueprint name (merged into users)', () => {
+    expect(getMappingForTable('providers')).toBeUndefined();
+  });
+
+  it('returns correct mapping for suspicious_activities (replaces disputes)', () => {
+    const mapping = getMappingForTable('suspicious_activities');
     expect(mapping).toBeDefined();
-    expect(mapping?.sourceTable).toBe('providers');
-    expect(mapping?.primaryKeyColumn).toBe('provider_id');
+    expect(mapping?.sourceTable).toBe('suspicious_activities');
+    expect(mapping?.primaryKeyColumn).toBe('id');
+  });
+
+  it('returns correct mapping for new tables', () => {
+    expect(getMappingForTable('booking_activities')).toBeDefined();
+    expect(getMappingForTable('wallet_histories')).toBeDefined();
+    expect(getMappingForTable('login_activities')).toBeDefined();
   });
 
   it('returns undefined for unknown table', () => {
