@@ -61,6 +61,12 @@ vi.mock('../../src/sync/connection', () => ({
   externalQuery: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
   testExternalConnection: vi.fn().mockResolvedValue(false),
   closeExternalPool: vi.fn().mockResolvedValue(undefined),
+  verifyReadOnlyPrivileges: vi.fn().mockResolvedValue({ safe: true, grants: ['SELECT'] }),
+  registerAllowedQuery: vi.fn(),
+  getCircuitBreakerState: vi.fn().mockReturnValue({ consecutiveFailures: 0, state: 'closed', openedAt: 0, lastError: '' }),
+  resetCircuitBreaker: vi.fn(),
+  validateReadOnlyQuery: vi.fn(),
+  convertPlaceholders: vi.fn((sql: string) => sql.replace(/\$\d+/g, '?')),
 }));
 
 // ─── Mock Event Emission (fire-and-forget helpers) ───────────
@@ -148,12 +154,14 @@ vi.mock('../../src/cache', () => ({
 const ALL_PERMISSIONS = [
   'overview.view', 'alerts.view', 'alerts.action', 'cases.view', 'cases.create',
   'cases.action', 'enforcement.view', 'enforcement.reverse', 'risk.view',
-  'appeals.view', 'appeals.resolve', 'audit_logs.view', 'settings.view',
+  'appeals.view', 'appeals.resolve', 'appeals.create', 'audit_logs.view', 'settings.view',
   'settings.manage_admins', 'settings.manage_roles', 'intelligence.view',
-  'category.view', 'system_health.view', 'messages.view',
+  'category.view', 'system_health.view', 'messages.view', 'messages.manage',
   'rules.view', 'rules.manage',
   'alerts.ai_summary', 'appeals.ai_analysis', 'risk.ai_patterns', 'risk.ai_predictive',
   'sync.view', 'sync.manage',
+  'risk.manage', 'transactions.manage', 'users.manage', 'ratings.manage',
+  'events.ingest',
 ];
 
 export const mockResolvePermissions = vi.fn().mockResolvedValue(ALL_PERMISSIONS);

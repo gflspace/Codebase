@@ -63,11 +63,11 @@ export function quickHealthCheck(results: SyncResult[]): { hasIssues: boolean; i
   const issues: SyncHealthIssue[] = [];
 
   for (const r of results) {
-    // High error rate in this cycle
+    // High error rate in this cycle (spec §7: alert at >5%)
     if (r.recordsFound > 0) {
       const errorRate = r.recordsFailed / r.recordsFound;
-      if (errorRate > 0.2) {
-        const priority = errorRate > 0.5 ? 'critical' : 'high';
+      if (errorRate > ERROR_RATE_THRESHOLD) {
+        const priority = errorRate > 0.5 ? 'critical' : errorRate > 0.2 ? 'high' : 'medium';
         issues.push({
           table: r.sourceTable,
           anomaly: 'high_error_rate',
@@ -96,7 +96,7 @@ export function quickHealthCheck(results: SyncResult[]): { hasIssues: boolean; i
 
 // Thresholds
 const STALLED_CYCLE_THRESHOLD = 10; // Watermark not advancing for 10+ runs
-const ERROR_RATE_THRESHOLD = 0.2;   // >20% failure rate
+const ERROR_RATE_THRESHOLD = 0.05;  // >5% failure rate (per architecture spec §7)
 const LATENCY_SPIKE_MULTIPLIER = 2; // Current > 2x rolling average
 
 /**

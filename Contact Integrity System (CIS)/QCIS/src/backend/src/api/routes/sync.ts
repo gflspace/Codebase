@@ -104,13 +104,11 @@ router.get('/test-connection', authenticateJWT, requirePermission('sync.manage')
     }
 
     const connected = await testExternalConnection();
+    // Spec §4: Do not expose connection metadata (host, port, user, database)
+    // in API responses — prevents information disclosure.
     res.json({
       connected,
       driver: config.sync.db.driver,
-      host: config.sync.db.host,
-      port: config.sync.db.port,
-      database: config.sync.db.name,
-      user: config.sync.db.user,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
