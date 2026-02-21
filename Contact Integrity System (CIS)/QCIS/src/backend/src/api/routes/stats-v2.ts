@@ -164,6 +164,7 @@ router.get(
       // Run 5 batch queries in parallel
       const [msgRows, txRows, sigRows, alertRows, scoreRows] = await Promise.all([
         // 1. Messages: active_users + message_count by bucket
+        // Filter out sender_id = 'system' to avoid inflating active user count with notifications
         query(
           `SELECT DATE_TRUNC('${bucket}', m.created_at) as ts,
                   COUNT(DISTINCT m.sender_id) as active_users,
@@ -171,6 +172,7 @@ router.get(
            FROM messages m
            ${msgEntityJoin}
            WHERE m.created_at > NOW() - INTERVAL '${doubleInterval}'
+           AND m.sender_id != 'system'
            ${msgWhere}
            GROUP BY ts ORDER BY ts`,
           msgCond.values

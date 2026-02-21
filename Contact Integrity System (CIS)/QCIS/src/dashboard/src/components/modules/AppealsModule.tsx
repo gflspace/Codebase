@@ -125,14 +125,24 @@ export default function AppealsModule() {
                         <p className="text-xs text-gray-500 mt-2 italic">Resolution: {appeal.resolution_notes}</p>
                       )}
                     </div>
-                    {['submitted', 'under_review'].includes(appeal.status) && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setResolveModal(appeal); }}
-                        className="px-3 py-1 text-xs bg-cis-green-soft text-cis-green rounded hover:bg-cis-green hover:text-white transition-colors"
-                      >
-                        Review
-                      </button>
-                    )}
+                    <div className="flex gap-2 flex-col items-end">
+                      {['submitted', 'under_review'].includes(appeal.status) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setResolveModal(appeal); }}
+                          className="px-3 py-1 text-xs bg-cis-green-soft text-cis-green rounded hover:bg-cis-green hover:text-white transition-colors"
+                        >
+                          Review
+                        </button>
+                      )}
+                      {['submitted', 'under_review'].includes(appeal.status) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedAppeal(appeal); loadAiAnalysis(appeal.id); }}
+                          className="px-3 py-1 text-xs bg-purple-50 text-purple-600 rounded hover:bg-purple-100 transition-colors"
+                        >
+                          AI Recommend
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

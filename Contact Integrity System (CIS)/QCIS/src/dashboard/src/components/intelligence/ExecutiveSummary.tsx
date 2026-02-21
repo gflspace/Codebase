@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useDashboardFilters } from '@/contexts/DashboardFilterContext';
 import * as api from '@/lib/api';
-import type { KPIData } from '@/lib/api';
+import type { KPIData, PlatformHealthSummary } from '@/lib/api';
 import KPITile from './KPITile';
 
 const KPI_LABELS: Record<keyof KPIData, string> = {
@@ -29,12 +29,104 @@ const KPI_ORDER: (keyof KPIData)[] = [
   'trust_score_index',
 ];
 
+function AIHealthNarrative() {
+  const { auth } = useAuth();
+  const { filterParams } = useDashboardFilters();
+  const [health, setHealth] = useState<PlatformHealthSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  async function load() {
+    if (!auth.token) return;
+    setLoading(true);
+    try {
+      const result = await api.getPlatformHealthSummary(auth.token, { range: filterParams.range });
+      setHealth(result.data);
+    } catch {
+      setHealth(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const HEALTH_COLORS: Record<string, string> = {
+    healthy: 'bg-green-50 border-green-200 text-green-800',
+    degraded: 'bg-amber-50 border-amber-200 text-amber-800',
+    critical: 'bg-red-50 border-red-200 text-red-800',
+  };
+
+  const HEALTH_BADGE: Record<string, string> = {
+    healthy: 'bg-green-100 text-green-700',
+    degraded: 'bg-amber-100 text-amber-700',
+    critical: 'bg-red-100 text-red-700',
+  };
+
+  return (
+    <div className="mt-3">
+      {!health && !loading && (
+        <button
+          onClick={load}
+          className="px-3 py-1.5 text-xs bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 transition-colors"
+        >
+          Generate AI Health Summary
+        </button>
+      )}
+      {loading && (
+        <div className="bg-purple-50 border border-purple-100 rounded-lg p-4 animate-pulse">
+          <div className="h-3 bg-purple-100 rounded w-40 mb-2" />
+          <div className="h-3 bg-purple-100 rounded w-64" />
+        </div>
+      )}
+      {health && (
+        <div className={`rounded-lg border p-4 ${HEALTH_COLORS[health.health_status] || HEALTH_COLORS.healthy}`}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">AI Health Assessment</span>
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${HEALTH_BADGE[health.health_status] || HEALTH_BADGE.healthy}`}>
+                {health.health_status}
+              </span>
+            </div>
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-xs text-gray-500 hover:text-gray-700"
+            >
+              {expanded ? 'Collapse' : 'Expand'}
+            </button>
+          </div>
+          <p className="text-sm mb-2">{health.narrative}</p>
+          {expanded && (
+            <>
+              {health.key_concerns.length > 0 && (
+                <div className="mb-2">
+                  <span className="text-xs font-medium">Key Concerns:</span>
+                  <ul className="list-disc list-inside text-xs mt-1 space-y-0.5">
+                    {health.key_concerns.map((c, i) => <li key={i}>{c}</li>)}
+                  </ul>
+                </div>
+              )}
+              {health.recommended_actions.length > 0 && (
+                <div>
+                  <span className="text-xs font-medium">Recommended Actions:</span>
+                  <ul className="list-disc list-inside text-xs mt-1 space-y-0.5">
+                    {health.recommended_actions.map((a, i) => <li key={i}>{a}</li>)}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ExecutiveSummary() {
   const { auth } = useAuth();
   const { filterParams } = useDashboardFilters();
   const [data, setData] = useState<KPIData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,13 +146,13 @@ export default function ExecutiveSummary() {
     load();
     const interval = setInterval(load, 60000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [auth.token, filterParams]);
+  }, [auth.token, filterParams, retryKey]);
 
   if (error) {
     return (
       <div className="mb-6">
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
-          Failed to load executive summary. <button onClick={() => setLoading(true)} className="underline ml-1">Retry</button>
+          Failed to load executive summary. <button onClick={() => setRetryKey((k) => k + 1)} className="underline ml-1">Retry</button>
         </div>
       </div>
     );
@@ -84,6 +176,7 @@ export default function ExecutiveSummary() {
           ))
         ) : null}
       </div>
+      <AIHealthNarrative />
     </div>
   );
 }

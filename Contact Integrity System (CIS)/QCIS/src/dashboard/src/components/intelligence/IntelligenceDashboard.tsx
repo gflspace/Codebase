@@ -2,6 +2,7 @@
 
 import { DashboardFilterProvider } from '@/contexts/DashboardFilterContext';
 import GlobalControlsBar from './GlobalControlsBar';
+import AIInsightsBanner from './AIInsightsBanner';
 import ExecutiveSummary from './ExecutiveSummary';
 import SignalBreakdown from './SignalBreakdown';
 import LeakageFunnel from './LeakageFunnel';
@@ -21,6 +22,7 @@ export default function IntelligenceDashboard() {
           <h2 className="text-xl font-bold text-gray-900 mb-1">Intelligence</h2>
           <p className="text-sm text-gray-400 mb-6">Real-time behavioral intelligence and early-warning signals.</p>
 
+          <AIInsightsBanner />
           <ExecutiveSummary />
           <SignalBreakdown />
           <LeakageFunnel />

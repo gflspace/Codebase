@@ -185,6 +185,43 @@ export const detectPatterns = (token: string) =>
 export const getPredictiveAlert = (token: string, userId: string) =>
   request<{ data: { likelihood: number; predicted_violation: string; timeframe: string; reasoning: string } }>('/ai/predictive-alert', { method: 'POST', body: { user_id: userId }, token });
 
+// ─── AI Intelligence Endpoints (Phase 3) ──────────────────────
+
+export interface AIInsight {
+  id: string;
+  type: 'trend' | 'anomaly' | 'recommendation' | 'milestone';
+  title: string;
+  body: string;
+  severity: 'info' | 'warning' | 'critical';
+  cta_label: string;
+  cta_link: string;
+  created_at: string;
+}
+
+export interface PlatformHealthSummary {
+  narrative: string;
+  health_status: 'healthy' | 'degraded' | 'critical';
+  key_concerns: string[];
+  recommended_actions: string[];
+}
+
+export interface AnomalyFinding {
+  title: string;
+  severity: string;
+  affected_users_count: number;
+  description: string;
+  action: string;
+}
+
+export const getAIInsightsFeed = (token: string) =>
+  request<{ data: AIInsight[] }>('/ai/insights-feed', { token });
+
+export const getPlatformHealthSummary = (token: string, params?: { range?: string }) =>
+  request<{ data: PlatformHealthSummary }>('/ai/platform-health-summary', { method: 'POST', body: { filters: params || {} }, token });
+
+export const getAnomalyDigest = (token: string) =>
+  request<{ data: { findings: AnomalyFinding[] } }>('/ai/anomaly-digest', { method: 'POST', body: {}, token });
+
 // ─── Stats V2 Endpoints (Intelligence Dashboard) ────────────────
 
 export interface KPIMetric {

@@ -77,6 +77,9 @@ export default function AlertsInbox() {
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
   const [aiSummary, setAiSummary] = useState<{ summary: string; risk_level: string; recommendations: string[] } | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiPatterns, setAiPatterns] = useState<Array<{ pattern: string; severity: string; details: string }> | null>(null);
+  const [aiPatternsLoading, setAiPatternsLoading] = useState(false);
+  const [showPatterns, setShowPatterns] = useState(false);
 
   useEffect(() => {
     loadAlerts();
@@ -135,11 +138,63 @@ export default function AlertsInbox() {
     }
   }
 
+  async function loadAiPatterns() {
+    if (!auth.token) return;
+    setAiPatternsLoading(true);
+    try {
+      const result = await api.detectPatterns(auth.token);
+      setAiPatterns(result.data.patterns);
+      setShowPatterns(true);
+    } catch {
+      setAiPatterns([]);
+      setShowPatterns(true);
+    } finally {
+      setAiPatternsLoading(false);
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-gray-900">Alerts & Inbox</h2>
+        <button
+          onClick={loadAiPatterns}
+          disabled={aiPatternsLoading}
+          className="px-3 py-1.5 text-xs bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 disabled:opacity-50 transition-colors"
+        >
+          {aiPatternsLoading ? 'Analyzing...' : 'AI Patterns'}
+        </button>
       </div>
+
+      {/* AI Patterns Slide-over */}
+      {showPatterns && (
+        <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-purple-800">AI Pattern Detection</h3>
+            <button onClick={() => setShowPatterns(false)} className="text-xs text-purple-600 hover:text-purple-800">Close</button>
+          </div>
+          {!aiPatterns || aiPatterns.length === 0 ? (
+            <p className="text-xs text-purple-600">No patterns detected in recent alerts.</p>
+          ) : (
+            <div className="space-y-2">
+              {aiPatterns.map((p, i) => (
+                <div key={i} className="bg-white rounded-md p-3 border border-purple-100">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      p.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                      p.severity === 'high' ? 'bg-orange-100 text-orange-700' :
+                      p.severity === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-green-100 text-green-700'
+                    }`}>{p.severity}</span>
+                    <span className="text-sm font-medium text-gray-900">{p.pattern}</span>
+                  </div>
+                  <p className="text-xs text-gray-600">{p.details}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="flex flex-wrap gap-3 mb-4">

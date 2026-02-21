@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { config, validateConfig } from './config';
 import { testConnection, closePool } from './database/connection';
 import { errorHandler, notFound } from './api/middleware/errorHandler';
+import { registerDomainPersistenceConsumer } from './sync/consumers/domain-persistence';
 import { registerDetectionConsumer } from './detection';
 import { registerScoringConsumer } from './scoring';
 import { registerEnforcementConsumer } from './enforcement';
@@ -24,6 +25,7 @@ import { registerLeakageAlertConsumer } from './alerting/consumers/leakage';
 import { registerAnomalyAlertConsumer } from './alerting/consumers/anomaly';
 import { registerClusterAlertConsumer } from './alerting/consumers/cluster';
 import { startSlaEscalation, stopSlaEscalation } from './alerting/sla-escalation';
+import { startAIInsightGenerator, stopAIInsightGenerator } from './services/ai-insights-generator';
 import { globalLimiter, aiLimiter, writeLimiter } from './api/middleware/rateLimit';
 import { metricsMiddleware } from './api/middleware/metrics';
 import { requestLogger } from './api/middleware/requestLogger';
@@ -180,6 +182,9 @@ async function start(): Promise<void> {
     console.log('  Event bus: in-memory mode');
   }
 
+  // Register domain persistence FIRST so data exists when anomaly queries run
+  registerDomainPersistenceConsumer();
+
   // Register event consumers (pipeline: detection → scoring → enforcement)
   registerDetectionConsumer();
   registerScoringConsumer();
@@ -204,7 +209,7 @@ async function start(): Promise<void> {
   registerLeakageAlertConsumer();
   registerAnomalyAlertConsumer();
   registerClusterAlertConsumer();
-  console.log('  Event consumers: 18 registered (detection, scoring, enforcement + 5 Phase 2C detectors + 4 Phase 3A intelligence + 1 Phase 4 correlation + 5 Phase 3C alerting)');
+  console.log('  Event consumers: 19 registered (domain-persistence + detection, scoring, enforcement + 5 Phase 2C detectors + 4 Phase 3A intelligence + 1 Phase 4 correlation + 5 Phase 3C alerting)');
 
   // Recover pending events from last crash (durable bus only)
   const bus = getEventBus();
@@ -222,6 +227,9 @@ async function start(): Promise<void> {
 
   // Start SLA escalation service (Layer 8)
   startSlaEscalation();
+
+  // Start background AI insight generator
+  startAIInsightGenerator();
 
   // Start data sync service (QwickServices pull architecture)
   if (config.sync.enabled) {
@@ -269,6 +277,9 @@ async function shutdown(signal: string): Promise<void> {
 
   // 2. Stop SLA escalation service
   stopSlaEscalation();
+
+  // 2.1. Stop AI insight generator
+  stopAIInsightGenerator();
 
   // 2.5. Stop data sync service
   try {

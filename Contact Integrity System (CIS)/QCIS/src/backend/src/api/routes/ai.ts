@@ -3,8 +3,11 @@ import { query } from '../../database/connection';
 import { authenticateJWT, requirePermission } from '../middleware/auth';
 import { config } from '../../config';
 import * as openai from '../../services/openai';
+import { getInsightsCache } from '../../services/ai-insights-generator';
 
 const router = Router();
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Check if OpenAI is configured
 function requireOpenAI(_req: Request, res: Response, next: () => void) {
@@ -24,8 +27,8 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { user_id } = req.body;
-      if (!user_id) {
-        res.status(400).json({ error: 'user_id is required' });
+      if (!user_id || !UUID_RE.test(user_id)) {
+        res.status(400).json({ error: 'user_id is required and must be a valid UUID' });
         return;
       }
 
@@ -93,8 +96,8 @@ router.post(
 
       const appeal = appealResult.rows[0];
       const priorViolations = await query(
-        'SELECT COUNT(*) FROM enforcement_actions WHERE user_id = $1',
-        [appeal.user_id]
+        'SELECT COUNT(*) FROM enforcement_actions WHERE user_id = $1 AND id != $2',
+        [appeal.user_id, appeal.enforcement_action_id]
       );
 
       const result = await openai.analyzeAppeal({
@@ -160,8 +163,8 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { user_id } = req.body;
-      if (!user_id) {
-        res.status(400).json({ error: 'user_id is required' });
+      if (!user_id || !UUID_RE.test(user_id)) {
+        res.status(400).json({ error: 'user_id is required and must be a valid UUID' });
         return;
       }
 
@@ -190,6 +193,99 @@ router.post(
     } catch (error) {
       console.error('AI predictive-alert error:', error);
       res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// ─── Phase 3: Platform Health Summary ─────────────────────────
+
+// POST /api/ai/platform-health-summary
+router.post(
+  '/platform-health-summary',
+  authenticateJWT,
+  requirePermission('intelligence.view'),
+  requireOpenAI,
+  async (req: Request, res: Response) => {
+    try {
+      const filters = req.body.filters || {};
+      const interval = filters.range === 'last_7d' ? '7 days' : filters.range === 'last_30d' ? '30 days' : '24 hours';
+
+      const [msgResult, txResult, sigResult, alertResult, scoreResult, providerResult] = await Promise.all([
+        query(`SELECT COUNT(DISTINCT sender_id) as active_users FROM messages WHERE created_at > NOW() - INTERVAL '${interval}' AND sender_id != 'system'`),
+        query(`SELECT COUNT(*) FILTER (WHERE status = 'completed') as completed, COUNT(*) FILTER (WHERE status = 'failed') as failed FROM transactions WHERE created_at > NOW() - INTERVAL '${interval}'`),
+        query(`SELECT COUNT(*) as off_platform FROM risk_signals WHERE signal_type IN ('OFF_PLATFORM_INTENT', 'PAYMENT_EXTERNAL') AND created_at > NOW() - INTERVAL '${interval}'`),
+        query(`SELECT COUNT(*) as open_alerts FROM alerts WHERE status IN ('open', 'assigned', 'in_progress') AND created_at > NOW() - INTERVAL '${interval}'`),
+        query(`SELECT AVG(score) as avg_score FROM risk_scores WHERE created_at > NOW() - INTERVAL '${interval}'`),
+        query(`SELECT COUNT(*) as active_providers FROM users WHERE user_type = 'provider' AND status = 'active'`),
+      ]);
+
+      const metrics = {
+        active_users: parseInt(msgResult.rows[0]?.active_users || '0', 10),
+        active_providers: parseInt(providerResult.rows[0]?.active_providers || '0', 10),
+        transactions_completed: parseInt(txResult.rows[0]?.completed || '0', 10),
+        failed_transactions: parseInt(txResult.rows[0]?.failed || '0', 10),
+        open_alerts: parseInt(alertResult.rows[0]?.open_alerts || '0', 10),
+        off_platform_signals: parseInt(sigResult.rows[0]?.off_platform || '0', 10),
+        trust_score_index: Math.round(parseFloat(scoreResult.rows[0]?.avg_score || '50') * 10) / 10,
+      };
+
+      const result = await openai.generatePlatformHealthSummary(metrics);
+      res.json({ data: result });
+    } catch (error) {
+      console.error('AI platform-health-summary error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// POST /api/ai/anomaly-digest
+router.post(
+  '/anomaly-digest',
+  authenticateJWT,
+  requirePermission('intelligence.view'),
+  requireOpenAI,
+  async (_req: Request, res: Response) => {
+    try {
+      const [signals, alerts] = await Promise.all([
+        query(`
+          SELECT signal_type, confidence, user_id
+          FROM risk_signals
+          WHERE created_at >= NOW() - INTERVAL '24 hours'
+          ORDER BY created_at DESC LIMIT 100
+        `),
+        query(`
+          SELECT priority, title, status
+          FROM alerts
+          WHERE created_at >= NOW() - INTERVAL '24 hours'
+          ORDER BY created_at DESC LIMIT 50
+        `),
+      ]);
+
+      const result = await openai.generateAnomalyDigest({
+        signals: signals.rows,
+        alerts: alerts.rows,
+      });
+
+      res.json({ data: result });
+    } catch (error) {
+      console.error('AI anomaly-digest error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// GET /api/ai/insights-feed
+router.get(
+  '/insights-feed',
+  authenticateJWT,
+  requirePermission('intelligence.view'),
+  async (_req: Request, res: Response) => {
+    try {
+      const insights = getInsightsCache();
+      res.json({ data: insights });
+    } catch (error) {
+      console.error('AI insights-feed error:', error);
+      res.json({ data: [] });
     }
   }
 );
