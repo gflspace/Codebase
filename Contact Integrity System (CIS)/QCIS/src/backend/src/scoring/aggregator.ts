@@ -165,13 +165,31 @@ export async function aggregateNetworkInputs(userId: string): Promise<NetworkInp
       [userId]
     );
 
-    // For now, device cluster and similar pattern detection are stubbed
-    // These would require IP/device tracking infrastructure
+    // Similar-pattern users: count flagged users sharing device hashes with this user
+    const similarPatternsResult = await query(
+      `SELECT COUNT(DISTINCT ud2.user_id) as similar_users
+       FROM user_devices ud1
+       JOIN user_devices ud2 ON ud1.device_hash = ud2.device_hash AND ud1.user_id != ud2.user_id
+       JOIN risk_signals rs ON rs.user_id = ud2.user_id
+       WHERE ud1.user_id = $1`,
+      [userId]
+    );
+
+    // Device cluster: user shares a device_hash or IP with 2+ other users
+    const deviceClusterResult = await query(
+      `SELECT COUNT(DISTINCT ud2.user_id) as cluster_size
+       FROM user_devices ud1
+       JOIN user_devices ud2 ON (ud1.device_hash = ud2.device_hash OR ud1.ip_address = ud2.ip_address)
+         AND ud1.user_id != ud2.user_id
+       WHERE ud1.user_id = $1`,
+      [userId]
+    );
+
     return {
       flaggedCounterparties: parseInt(counterpartyResult.rows[0]?.flagged_counterparties || '0', 10),
       sharedPaymentEndpoints: parseInt(sharedEndpointResult.rows[0]?.shared || '0', 10) > 0,
-      similarPatternUsers: 0, // Stub — requires pattern matching infrastructure
-      inDeviceCluster: false, // Stub — requires device tracking
+      similarPatternUsers: parseInt(similarPatternsResult.rows[0]?.similar_users || '0', 10),
+      inDeviceCluster: parseInt(deviceClusterResult.rows[0]?.cluster_size || '0', 10) >= 2,
     };
   } catch {
     return {

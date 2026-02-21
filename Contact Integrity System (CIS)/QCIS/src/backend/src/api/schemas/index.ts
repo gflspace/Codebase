@@ -429,3 +429,31 @@ export const updateSubscriptionSchema = z.object({
   channels: z.array(z.enum(['dashboard', 'email', 'slack'])).optional(),
   enabled: z.boolean().optional(),
 });
+
+// ─── Intake Form ────────────────────────────────────────────
+
+export const intakeFormSchema = z.object({
+  first_name: z.string().min(1).max(100),
+  last_name: z.string().min(1).max(100),
+  email: z.string().email().max(255),
+  phone: z.string().max(50).optional(),
+  service_category: z.string().max(100).optional(),
+  service_description: z.string().max(5000).optional(),
+  preferred_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format').optional(),
+  preferred_time: z.string().max(20).optional(),
+  referral_source: z.string().max(100).optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+export const intakeFormQuerySchema = paginationQuery.extend({
+  status: z.enum(['new', 'contacted', 'converted', 'archived']).optional(),
+  email: z.string().email().optional(),
+  service_category: z.string().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+});
+
+export const updateIntakeFormSchema = z.object({
+  status: z.enum(['new', 'contacted', 'converted', 'archived']).optional(),
+  notes: z.string().max(5000).optional(),
+});

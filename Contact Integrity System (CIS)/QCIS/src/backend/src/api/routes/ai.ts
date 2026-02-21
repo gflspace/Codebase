@@ -281,7 +281,7 @@ router.get(
   requirePermission('intelligence.view'),
   async (_req: Request, res: Response) => {
     try {
-      const insights = getInsightsCache();
+      const insights = await getInsightsCache();
       res.json({ data: insights });
     } catch (error) {
       console.error('AI insights-feed error:', error);

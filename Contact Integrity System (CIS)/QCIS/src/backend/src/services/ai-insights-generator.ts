@@ -1,27 +1,24 @@
 // QwickServices CIS — Background AI Insight Generator
 // Runs every 15 minutes, queries aggregate metrics from CIS PostgreSQL,
 // calls OpenAI to generate 2-3 actionable insights, and stores them
-// in an in-memory cache with a 4-hour TTL.
+// in the cache layer (Redis when available, in-memory fallback) with a 4-hour TTL.
 
 import { config } from '../config';
 import { query } from '../database/connection';
 import { generateInsights, AIInsight } from './openai';
+import { cacheGet, cacheSet } from '../cache';
 
-// ─── In-Memory Cache ──────────────────────────────────────────
+// ─── Cache Configuration ────────────────────────────────────────
 
-const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+const CACHE_KEY = 'ai-insights';
+const CACHE_TTL_SECONDS = 4 * 60 * 60; // 4 hours
 const GENERATION_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
-let insightsCache: AIInsight[] = [];
-let cacheTimestamp = 0;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
-export function getInsightsCache(): AIInsight[] {
-  // Return cached insights if still valid
-  if (Date.now() - cacheTimestamp > CACHE_TTL_MS) {
-    return []; // Stale cache — return empty until next generation
-  }
-  return insightsCache;
+export async function getInsightsCache(): Promise<AIInsight[]> {
+  const cached = await cacheGet<AIInsight[]>(CACHE_KEY);
+  return cached || [];
 }
 
 // ─── Generation Logic ─────────────────────────────────────────
@@ -59,8 +56,7 @@ async function generateAndCache(): Promise<void> {
     const insights = await generateInsights({ metrics, anomaly_count: anomalyCount, trend_direction: trendDirection });
 
     if (insights.length > 0) {
-      insightsCache = insights;
-      cacheTimestamp = Date.now();
+      await cacheSet(CACHE_KEY, insights, { ttlSeconds: CACHE_TTL_SECONDS });
       console.log(`[AIInsights] Generated ${insights.length} insights`);
     }
   } catch (err) {

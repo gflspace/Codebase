@@ -107,6 +107,48 @@ router.get(
   }
 );
 
+// POST /api/shadow/toggle — toggle shadow mode at runtime (super_admin only)
+router.post(
+  '/toggle',
+  authenticateJWT,
+  requirePermission('system.toggle_shadow'),
+  async (req: Request, res: Response) => {
+    try {
+      const { enabled } = req.body;
+      if (typeof enabled !== 'boolean') {
+        res.status(400).json({ error: 'enabled (boolean) is required' });
+        return;
+      }
+
+      const previousValue = config.shadowMode;
+      (config as { shadowMode: boolean }).shadowMode = enabled;
+
+      // Audit log the change
+      const adminId = (req as unknown as { admin: { id: string } }).admin?.id || 'unknown';
+      await query(
+        `INSERT INTO audit_logs (id, action, actor_id, entity_type, entity_id, details, timestamp)
+         VALUES (uuid_generate_v4(), $1, $2, 'system', 'shadow_mode', $3, NOW())`,
+        [
+          enabled ? 'shadow.enabled' : 'shadow.disabled',
+          adminId,
+          JSON.stringify({ previous: previousValue, current: enabled }),
+        ]
+      );
+
+      console.log(`[Shadow] Mode ${enabled ? 'ENABLED' : 'DISABLED'} by admin ${adminId} (was: ${previousValue})`);
+
+      res.json({
+        shadow_mode: config.shadowMode,
+        previous: previousValue,
+        message: `Shadow mode ${enabled ? 'enabled' : 'disabled'}. ${!enabled ? 'WARNING: Enforcement actions will now be applied to real users.' : ''}`,
+      });
+    } catch (error) {
+      console.error('Shadow toggle error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
 function generateReadinessChecklist(signalCount: number, shadowActionCount: number) {
   return {
     items: [
