@@ -63,6 +63,7 @@ import adminRulesRoutes from './api/routes/admin-rules';
 import streamRoutes from './api/routes/stream';
 import syncRoutes from './api/routes/sync';
 import correlationRoutes from './api/routes/correlations';
+import intakeFormRoutes from './api/routes/intake-forms';
 import { startSync, stopSync } from './sync';
 
 const app = express();
@@ -97,6 +98,7 @@ app.use('/api/evaluate', writeLimiter);
 app.use('/api/alert-subscriptions', writeLimiter);
 app.use('/api/admin/rules', writeLimiter);
 app.use('/api/sync', writeLimiter);
+app.use('/api/intake-form', writeLimiter);
 
 // Root route
 app.get('/', (_req, res) => {
@@ -141,6 +143,7 @@ app.use('/api/admin/rules', adminRulesRoutes);
 app.use('/api/stream', streamRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/correlations', correlationRoutes);
+app.use('/api/intake-form', intakeFormRoutes);
 
 // Error handling
 app.use(notFound);
