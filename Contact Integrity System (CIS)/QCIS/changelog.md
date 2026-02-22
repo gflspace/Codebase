@@ -512,3 +512,154 @@
 | `src/backend/src/database/reset-test-data.sql` | Clean teardown script |
 
 ---
+
+## 2026-02-09 — Phase 1 Production Hardening
+
+**Phase:** BUILD
+**Agent:** Builder
+
+### Changes
+
+- **Durable event bus** — Redis-backed event persistence with retry, DLQ, and crash recovery
+- **Graceful shutdown** — Signal handlers drain HTTP connections, event bus, Redis, and DB pool
+- **Rate limiting** — Global (100/min), AI (10/min), write (30/min) per-IP sliding window
+- **Infrastructure automation** — PM2 ecosystem config, deployment scripts
+- **Auth hardening** — Integration tests for login, token validation, permission checks
+- **Health probe** — `/api/health` endpoint with uptime, DB status, event bus state
+
+---
+
+## 2026-02-10 — Phase 2A–2D: Detection Expansion & Scoring Redesign
+
+**Phase:** BUILD
+**Agent:** Builder
+
+### Changes
+
+- **Phase 2A — Data Foundation**: Webhook ingestion, bookings/wallet tables, event normalization
+- **Phase 2B — Scoring Model**: 5-component additive trust score (Operational 25%, Behavioral 30%, Network 20%, Verification 15%, Historical 10%) with exponential time decay
+- **Phase 2C — Detection Expansion**: 5 new event bus consumers (booking-anomaly, payment-anomaly, provider-behavior, temporal-pattern, contact-change) with 20 signal types
+- **Phase 2D — Signal Completeness**: Ratings table, schema sync, signal breakdown API, dashboard visibility
+
+---
+
+## 2026-02-12 — Phase 3: Intelligence Layers & Alerting Engine
+
+**Phase:** BUILD
+**Agent:** Builder
+
+### Changes
+
+- **Phase 3A — Intelligence**: Off-platform leakage funnel, network graph, device fingerprinting, contagion propagation (4 consumers)
+- **Phase 3B — Enforcement Orchestrator**: Contextual enforcement triggers with graduated responses
+- **Phase 3C — Alerting Engine**: 5 alert consumers (threshold, trend, leakage, anomaly, cluster) + SLA escalation service
+- **Phase 3D — Rules Engine**: Admin-configurable detection rules with Zod schema validation
+- **SSE Streaming**: Real-time event push via `/api/stream`
+- **Dashboard Modules**: Intelligence, network explorer, leakage funnel, rules engine, data sync
+
+---
+
+## 2026-02-14 — Phase 4: Cross-Signal Correlation & Network Intelligence
+
+**Phase:** BUILD
+**Agent:** Builder
+
+### Changes
+
+- **Correlation Engine**: Cross-signal pattern matching with configurable windows
+- **Network Penalty**: Trust score reduction based on flagged counterparty density
+- **Dispute Detection**: Dispute signals integrated into risk pipeline
+- **Dashboard Intelligence**: Cluster intelligence, correlation explorer, anomaly alerts
+- **Score Recalculation**: Batch recalculation API with audit logging
+- **Migrations 031-034**: Correlation tables, decay coefficients, network indexes
+
+---
+
+## 2026-02-15 — Production Deployment & CI/CD
+
+**Phase:** BUILD
+**Agent:** Builder
+
+### Changes
+
+- **CI/CD Pipelines**: GitHub Actions for test, build, deploy
+- **SSL Configuration**: Nginx SSL termination, HTTP→HTTPS redirect
+- **Monitoring Stack**: PM2 metrics, health probes, error alerting
+- **Laravel Integration**: Webhook ingestion from QwickServices Laravel backend
+- **AI Test Suite**: 46 integration tests for all AI endpoints
+- **Dashboard Polish**: Dark mode, E2E test stubs, error boundaries
+
+---
+
+## 2026-02-16 — QwickServices Data Sync Service
+
+**Phase:** BUILD
+**Agent:** Builder
+
+### Changes
+
+- **Sync Service**: Pull architecture from QwickServices MySQL with read-only connection
+- **MySQL Driver**: Direct mysql2 integration with parameterized queries
+- **Table Mappings**: 8 tables aligned to actual QwickServices schema (verified 2026-02-16)
+- **Checkpoint Tracking**: `sync_watermarks` table for resumable incremental sync
+- **Read-Only Governance**: `master_claude.md` §11 — SQL write suppression guard, SELECT-only grants
+
+---
+
+## 2026-02-18 — Sync Layer Hardening & Event Emission
+
+**Phase:** BUILD
+**Agent:** Builder
+
+### Changes
+
+- **Event Emission Layer**: Domain events wired through all sync consumers with backfill guard
+- **UUID vs BigInt Resolution**: MySQL BigInt external IDs mapped to CIS UUID primary keys
+- **Schema Drift Detection**: Runtime column validation against expected schemas
+- **Sync Health Monitor**: `/api/sync/health` with circuit breaker state, watermark lag, error rates
+- **Critical Bug Fixes**: MySQL readonly grants, payload ID resolution, contact-change detection
+
+---
+
+## 2026-02-21 — Sync Hardening, AI Intelligence, & Network Wiring
+
+**Phase:** BUILD
+**Agent:** Builder
+
+### Changes
+
+- **Sync Layer Hardening**: Session-level `SET SESSION TRANSACTION READ ONLY`, circuit breaker (5 failures → 60s cooldown), exponential backoff with jitter, query allowlist, event dedup
+- **Domain Persistence Consumer**: Event-driven UPSERT bridge for bookings, transactions, wallets, ratings, disputes with status mappings
+- **AI Intelligence Layer**: 6 OpenAI endpoints (risk summary, appeal analysis, pattern detection, platform health, anomaly digest, predictive alerts) + background insight generator (15-min cycle, Redis-backed cache)
+- **Network Intelligence Wired**: Scoring aggregator queries `user_devices` + `user_relationships` for device clusters and similar-pattern users (was stubbed since Phase 3A)
+- **Shadow Mode Toggle**: `POST /api/shadow/toggle` endpoint with audit logging and migration 041
+- **Cache Hardening**: AI insights migrated from module-level variables to `cacheGet`/`cacheSet` for PM2 restart resilience
+
+### Code Review Hardening (10 issues caught, 7 fixed)
+
+| Issue | Fix |
+|---|---|
+| Appeal prior_violations counted the appealed action | `AND id != $2` exclusion |
+| Non-UUID user_id caused 500 on PostgreSQL | UUID regex validation, returns 400 |
+| Transaction/wallet amount defaults to 0 | Changed to `null` |
+| mapWalletTxType substring matching fragile | Exact key lookup with `withdrawal` added |
+| ExecutiveSummary retry button never re-fetched | `retryKey` state pattern in useEffect |
+| Dynamic import on every /insights-feed request | Static import |
+| No fetch timeout on OpenAI calls | AbortController with 30s timeout |
+
+---
+
+## 2026-02-21 — Intake Forms, E2E Tests, Migration Fix
+
+**Phase:** BUILD
+**Agent:** Builder
+
+### Changes
+
+- **Intake Form Route**: `POST /api/intake-form` (public), `GET` (list), `GET /:id`, `PATCH /:id` (admin-only) with Zod validation and IP/user-agent tracking
+- **Migration 029 Collision Fixed**: Renamed `029_intake_forms.sql` → `042_intake_forms.sql` (collision with `029_performance_indexes.sql`)
+- **Migration 043**: Intake RBAC permissions (`intake.view`, `intake.manage`) granted to admin roles
+- **Playwright E2E Tests**: All 12 tests implemented (was 3 partial + 10 stubs) — API mocking via `page.route()`, auth injection via localStorage, coverage: login, RBAC gating, alert claim/dismiss, case details/notes, enforcement reversal modal, appeal resolution
+- **Integration Tests**: 24 tests for intake-forms route (POST validation, GET filters, GET/:id, PATCH status/notes, auth checks)
+
+---

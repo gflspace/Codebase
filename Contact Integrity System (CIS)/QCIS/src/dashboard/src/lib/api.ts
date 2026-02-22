@@ -707,3 +707,35 @@ export const testSyncConnection = (token: string) =>
   request<{ connected: boolean; host?: string; port?: number; database?: string; error?: string }>('/sync/test-connection', {
     token,
   });
+
+// Intake Forms
+export interface IntakeForm {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  service_category: string | null;
+  service_description: string | null;
+  preferred_date: string | null;
+  preferred_time: string | null;
+  referral_source: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  metadata: Record<string, unknown>;
+  status: 'new' | 'contacted' | 'converted' | 'archived';
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const getIntakeForms = (token: string, params?: Record<string, string>) => {
+  const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+  return request<{ data: IntakeForm[]; pagination: { page: number; limit: number; total: number; pages: number } }>(`/intake-form${qs}`, { token });
+};
+
+export const getIntakeForm = (token: string, id: string) =>
+  request<{ data: IntakeForm }>(`/intake-form/${id}`, { token });
+
+export const updateIntakeForm = (token: string, id: string, data: { status?: string; notes?: string }) =>
+  request<{ data: IntakeForm }>(`/intake-form/${id}`, { method: 'PATCH', body: data, token });

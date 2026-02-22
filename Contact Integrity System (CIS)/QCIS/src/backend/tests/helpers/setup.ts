@@ -162,6 +162,8 @@ const ALL_PERMISSIONS = [
   'sync.view', 'sync.manage',
   'risk.manage', 'transactions.manage', 'users.manage', 'ratings.manage',
   'events.ingest',
+  'intake.view', 'intake.manage',
+  'system.toggle_shadow',
 ];
 
 export const mockResolvePermissions = vi.fn().mockResolvedValue(ALL_PERMISSIONS);
