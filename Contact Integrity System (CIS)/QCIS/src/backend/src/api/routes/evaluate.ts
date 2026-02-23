@@ -166,7 +166,7 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    const score = parseFloat(scoreResult.rows[0].score);
+    const score = parseFloat(String(scoreResult.rows[0].score));
     const tier = scoreResult.rows[0].tier as RiskTier;
     const riskScoreId = scoreResult.rows[0].id as string;
     const signals = signalResult.rows.map((r: { signal_type: string }) => r.signal_type);

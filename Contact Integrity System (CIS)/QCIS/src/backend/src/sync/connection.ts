@@ -412,7 +412,7 @@ export async function verifyReadOnlyPrivileges(): Promise<{ safe: boolean; grant
 function isAuthError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
-  const code = (err as Record<string, unknown>).code;
+  const code = (err as unknown as Record<string, unknown>).code;
   // MySQL: ER_ACCESS_DENIED_ERROR (1045), ER_DBACCESS_DENIED_ERROR (1044)
   if (code === 'ER_ACCESS_DENIED_ERROR' || code === 1045 || code === 'ER_DBACCESS_DENIED_ERROR' || code === 1044) return true;
   // PostgreSQL: 28P01 (invalid_password), 28000 (invalid_authorization_specification)
