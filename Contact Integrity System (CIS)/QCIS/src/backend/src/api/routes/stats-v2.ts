@@ -172,7 +172,7 @@ router.get(
            FROM messages m
            ${msgEntityJoin}
            WHERE m.created_at > NOW() - INTERVAL '${doubleInterval}'
-           AND m.sender_id != 'system'
+           AND m.sender_id != '00000000-0000-0000-0000-000000000000'
            ${msgWhere}
            GROUP BY ts ORDER BY ts`,
           msgCond.values

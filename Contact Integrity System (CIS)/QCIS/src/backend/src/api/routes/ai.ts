@@ -211,7 +211,7 @@ router.post(
       const interval = filters.range === 'last_7d' ? '7 days' : filters.range === 'last_30d' ? '30 days' : '24 hours';
 
       const [msgResult, txResult, sigResult, alertResult, scoreResult, providerResult] = await Promise.all([
-        query(`SELECT COUNT(DISTINCT sender_id) as active_users FROM messages WHERE created_at > NOW() - INTERVAL '${interval}' AND sender_id != 'system'`),
+        query(`SELECT COUNT(DISTINCT sender_id) as active_users FROM messages WHERE created_at > NOW() - INTERVAL '${interval}' AND sender_id != '00000000-0000-0000-0000-000000000000'`),
         query(`SELECT COUNT(*) FILTER (WHERE status = 'completed') as completed, COUNT(*) FILTER (WHERE status = 'failed') as failed FROM transactions WHERE created_at > NOW() - INTERVAL '${interval}'`),
         query(`SELECT COUNT(*) as off_platform FROM risk_signals WHERE signal_type IN ('OFF_PLATFORM_INTENT', 'PAYMENT_EXTERNAL') AND created_at > NOW() - INTERVAL '${interval}'`),
         query(`SELECT COUNT(*) as open_alerts FROM alerts WHERE status IN ('open', 'assigned', 'in_progress') AND created_at > NOW() - INTERVAL '${interval}'`),
